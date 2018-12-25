@@ -27,7 +27,7 @@
 #include "internal/ExecutionStream.h"
 #include "internal/ExecutionQueue.h"
 #include "internal/TaskProviderList.h"
-#include "internal/TaskProviderUtils.h"
+#include "internal/ExecutionPoolUtils.h"
 
 #include <vector>
 
