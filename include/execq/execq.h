@@ -24,27 +24,6 @@
 
 #pragma once
 
-#include "execq/internal/ITaskProvider.h"
-
-#include <list>
-
-namespace execq
-{
-    namespace details
-    {
-        class TaskProviderList: public ITaskProvider
-        {
-        public:
-            void add(ITaskProvider& taskProvider);
-            void remove(const ITaskProvider& taskProvider);
-            
-        public: // ITaskProvider
-            virtual Task nextTask() final;
-            
-        private:
-            using TaskProviders_mt = std::list<ITaskProvider*>;
-            TaskProviders_mt m_taskProviders;
-            TaskProviders_mt::iterator m_currentTaskProviderIt;
-        };
-    }
-}
+#include "ExecutionPool.h"
+#include "IExecutionQueue.h"
+#include "IExecutionStream.h"

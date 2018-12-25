@@ -24,10 +24,9 @@
 
 #pragma once
 
-#include "IExecutionStream.h"
-#include "ExecutionPoolUtils.h"
+#include "execq/IExecutionStream.h"
+#include "execq/internal/ExecutionPoolUtils.h"
 
-#include <queue>
 #include <mutex>
 #include <thread>
 #include <atomic>

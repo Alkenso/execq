@@ -24,10 +24,10 @@
 
 #pragma once
 
-#include "internal/ExecutionStream.h"
-#include "internal/ExecutionQueue.h"
-#include "internal/TaskProviderList.h"
-#include "internal/ExecutionPoolUtils.h"
+#include "execq/internal/ExecutionStream.h"
+#include "execq/internal/ExecutionQueue.h"
+#include "execq/internal/TaskProviderList.h"
+#include "execq/internal/ExecutionPoolUtils.h"
 
 #include <vector>
 

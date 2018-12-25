@@ -24,7 +24,7 @@
 
 #pragma once
 
-#include "ITaskProvider.h"
+#include "execq/internal/ITaskProvider.h"
 
 #include <queue>
 
