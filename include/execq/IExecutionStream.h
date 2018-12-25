@@ -28,26 +28,22 @@
 
 namespace execq
 {
-    template <typename T>
-    class IExecutionQueue
+    class IExecutionStream
     {
     public:
-        virtual ~IExecutionQueue() = default;
+        virtual ~IExecutionStream() = default;
         
         /**
-         * @brief Pushed an object to be process on the queue.
+         * @brief Starts execution stream.
+         * Each time when thread in pool becomes free, execution stream will be prompted of next task to execute.
          */
-        template <typename Y = T>
-        void push(Y&& object);
+        virtual void start() = 0;
         
-    private:
-        virtual void pushImpl(std::unique_ptr<T> object) = 0;
+        /**
+         * @brief Stops execution stream.
+         * Execution stream will not be prompted of next tasks to execute until 'start' is called.
+         * All tasks being executed during stop will normally continue.
+         */
+        virtual void stop() = 0;
     };
-}
-
-template <typename T>
-template <typename Y>
-void execq::IExecutionQueue<T>::push(Y&& object)
-{
-    pushImpl(std::unique_ptr<T>(new T(std::forward<Y>(object))));
 }

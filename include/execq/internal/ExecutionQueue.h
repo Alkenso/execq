@@ -24,8 +24,8 @@
 
 #pragma once
 
-#include "ITaskProvider.h"
 #include "IExecutionQueue.h"
+#include "TaskProviderUtils.h"
 
 #include <queue>
 #include <mutex>
@@ -42,9 +42,9 @@ namespace execq
         public:
             virtual ~IExecutionQueueDelegate() = default;
             
-            virtual void registerTaskProvider(ITaskProvider& taskProvider) = 0;
-            virtual void unregisterTaskProvider(const details::ITaskProvider& taskProvider) = 0;
-            virtual void taskProviderDidReceiveNewTask() = 0;
+            virtual void registerQueueTaskProvider(ITaskProvider& taskProvider) = 0;
+            virtual void unregisterQueueTaskProvider(const details::ITaskProvider& taskProvider) = 0;
+            virtual void queueDidReceiveNewTask() = 0;
         };
         
         
@@ -52,7 +52,7 @@ namespace execq
         class ExecutionQueue: public IExecutionQueue<T>, private ITaskProvider
         {
         public:
-            ExecutionQueue(IExecutionQueueDelegate& delegate, std::function<void(const std::atomic_bool& shouldStop, T object)> executor);
+            ExecutionQueue(IExecutionQueueDelegate& delegate, std::function<void(const std::atomic_bool& shouldQuit, T object)> executor);
             ~ExecutionQueue();
             
         private: // IExecutionQueue
@@ -66,7 +66,7 @@ namespace execq
             void waitPendingTasks();
             
         private:
-            std::atomic_bool m_shouldStop { false };
+            std::atomic_bool m_shouldQuit { false };
             
             std::atomic_size_t m_pendingTaskCount { 0 };
             std::mutex m_taskCompleteMutex;
@@ -77,29 +77,27 @@ namespace execq
             std::condition_variable m_taskQueueCondition;
             
             std::reference_wrapper<IExecutionQueueDelegate> m_delegate;
-            std::function<void(const std::atomic_bool& shouldStop, T object)> m_executor;
+            std::function<void(const std::atomic_bool& shouldQuit, T object)> m_executor;
             
             std::future<void> m_thread;
         };
-        
-        Task PopTaskFromQueue(std::queue<Task>& queue);
     }
 }
 
 template <typename T>
-execq::details::ExecutionQueue<T>::ExecutionQueue(IExecutionQueueDelegate& delegate, std::function<void(const std::atomic_bool& shouldStop, T object)> executor)
+execq::details::ExecutionQueue<T>::ExecutionQueue(IExecutionQueueDelegate& delegate, std::function<void(const std::atomic_bool& shouldQuit, T object)> executor)
 : m_delegate(delegate)
 , m_executor(std::move(executor))
 , m_thread(std::async(std::launch::async, std::bind(&ExecutionQueue::queueThreadWorker, this)))
 {
-    m_delegate.get().registerTaskProvider(*this);
+    m_delegate.get().registerQueueTaskProvider(*this);
 }
 
 template <typename T>
 execq::details::ExecutionQueue<T>::~ExecutionQueue()
 {
-    m_shouldStop = true;
-    m_delegate.get().unregisterTaskProvider(*this);
+    m_shouldQuit = true;
+    m_delegate.get().unregisterQueueTaskProvider(*this);
     m_taskQueueCondition.notify_all();
     waitPendingTasks();
 }
@@ -113,13 +111,13 @@ void execq::details::ExecutionQueue<T>::pushImpl(std::unique_ptr<T> object)
     
     std::shared_ptr<T> sharedObject = std::move(object);
     m_taskQueue.push(Task([this, sharedObject] () {
-        m_executor(m_shouldStop, std::move(*sharedObject));
+        m_executor(m_shouldQuit, std::move(*sharedObject));
         
         m_pendingTaskCount--;
         m_taskCompleteCondition.notify_one();
     }));
     
-    m_delegate.get().taskProviderDidReceiveNewTask();
+    m_delegate.get().queueDidReceiveNewTask();
     m_taskQueueCondition.notify_one();
 }
 
@@ -148,7 +146,7 @@ void execq::details::ExecutionQueue<T>::queueThreadWorker()
     };
     
     NonblockingTaskProvider taskProvider(m_taskQueue);
-    WorkerThread(taskProvider, m_taskQueueCondition, m_taskQueueMutex, m_shouldStop);
+    WorkerThread(taskProvider, m_taskQueueCondition, m_taskQueueMutex, m_shouldQuit);
 }
 
 template <typename T>
@@ -159,17 +157,4 @@ void execq::details::ExecutionQueue<T>::waitPendingTasks()
     {
         m_taskCompleteCondition.wait(lock);
     }
-}
-
-execq::details::Task execq::details::PopTaskFromQueue(std::queue<Task>& queue)
-{
-    if (queue.empty())
-    {
-        return Task();
-    }
-    
-    Task task = std::move(queue.front());
-    queue.pop();
-    
-    return task;
 }

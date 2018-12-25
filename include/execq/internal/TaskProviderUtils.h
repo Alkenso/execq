@@ -26,43 +26,13 @@
 
 #include "ITaskProvider.h"
 
+#include <queue>
+
 namespace execq
 {
     namespace details
     {
-        Task ReceiveNextTask(ITaskProvider& taskProvider, std::condition_variable& taskCondition, std::mutex& taskMutex, const std::atomic_bool& shouldStop)
-        {
-            Task task;
-            while (true)
-            {
-                std::unique_lock<std::mutex> lock(taskMutex);
-                
-                task = taskProvider.nextTask();
-                if (task.valid() || shouldStop)
-                {
-                    break;
-                }
-                
-                taskCondition.wait(lock);
-            }
-            
-            return task;
-        }
-        
-        void WorkerThread(ITaskProvider& taskProvider, std::condition_variable& taskCondition, std::mutex& taskMutex, const std::atomic_bool& shouldStop)
-        {
-            while (true)
-            {
-                Task task = ReceiveNextTask(taskProvider, taskCondition, taskMutex, shouldStop);
-                if (task.valid())
-                {
-                    task();
-                }
-                else if (shouldStop)
-                {
-                    break;
-                }
-            }
-        }
+        void WorkerThread(ITaskProvider& taskProvider, std::condition_variable& taskCondition, std::mutex& taskMutex, const std::atomic_bool& shouldQuit);
+        Task PopTaskFromQueue(std::queue<Task>& queue);
     }
 }
