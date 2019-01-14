@@ -10,7 +10,7 @@ It supports different task sources and maintains task execution in parallel on N
 #### Queues and Streams
 execq deals with concurrent task execution using two approaches: `queue-based` and `stream-based`
 
-*You are free to use multimple queues and streams and any combintaions of them!*
+*You are free to use multimple queues and streams and any combinations of them!*
 
 ##### 1. Queue-based approach.
 Designed to process some objects 'on demand', i.e. when some objects are available.
@@ -21,10 +21,8 @@ execq allows to create 'ExecutionQueue' object to process your objects there.
 Now that is no need to write you own queue and synchronization around it - all is done inside!
 
     #include <execq/execq.h>
-
-    execq::ExecutionPool pool;
-
-    // The function is called in parallel on the next free thread 
+    
+    // The function is called in parallel on the next free thread
     // with the next object from the queue.
     void ProcessObject(const std::atomic_bool& isCanceled, std::string object)
     {
@@ -33,18 +31,27 @@ Now that is no need to write you own queue and synchronization around it - all i
             std::cout << "Queue has been canceled. Skipping object...";
             return;
         }
-
+        
         std::cout << "Processing object: " << object << '\n';
     }
-
-    std::unique_ptr<execq::IExecutionQueue<std::string>> queue = pool.createExecutionQueue<std::string>(&ProcessObject);
-
-    queue->push("qwe");
-    queue->push("some string");
-    queue->push("");
-
-    // wait until objects are delivered to threads. Only for example purposes.
-    sleep(10);
+        
+    int main(void)
+    {
+        execq::ExecutionPool pool;
+        
+        std::unique_ptr<execq::IExecutionQueue<std::string>> queue = pool.createExecutionQueue<std::string>(&ProcessObject);
+        
+        queue->push("qwe");
+        queue->push("some string");
+        queue->push("");
+        
+        // Only for example purposes.
+        // Usually here (if in 'main') could be RunLoop/EventLoop.
+        // wait until objects are delivered to threads.
+        sleep(5);
+        
+        return 0;
+    }
 
 ##### 2. Stream-based approach.
 Designed to process uncountable amount of tasks as fast as possible, i.e. process next task whenever new thread is available.
@@ -52,7 +59,7 @@ Designed to process uncountable amount of tasks as fast as possible, i.e. proces
 execq allows to create 'ExecutionStream' object that will execute your code each time the thread in the pool is ready to execute next task.
 That approach should be considered as the most effective way to process unlimited (or almost unlimited) tasks.
 
-    // The function is called each time the thread is ready to execute next task. 
+    // The function is called each time the thread is ready to execute next task.
     // It is called only if stream is started.
     void ProcessNextObject(const std::atomic_bool& isCanceled)
     {
@@ -61,26 +68,35 @@ That approach should be considered as the most effective way to process unlimite
             std::cout << "Stream has been canceled. Skipping...";
             return;
         }
-
+        
         static std::atomic_int s_someObject { 0 };
-
+        
         const int nextObject = s_someObject++;
-
+        
         std::cout << "Processing object: " << nextObject << '\n';
     }
 
-    execq::ExecutionPool pool;
-
-    std::unique_ptr<execq::IExecutionStream> stream = pool.createExecutionStream(&ProcessNextObject);
-
-    stream->start();
-
-    // wait until some objects are processed. Only for example purposes.
-    sleep(5);
+    int main(void)
+    {
+        execq::ExecutionPool pool;
+        
+        std::unique_ptr<execq::IExecutionStream> stream = pool.createExecutionStream(&ProcessNextObject);
+        
+        stream->start();
+        
+        // wait until some objects are processed. Only for example purposes.
+        sleep(5);
+        
+        // Only for example purposes. Usually here (if in 'main') could be RunLoop/EventLoop.
+        // Wait until some objects are processed.
+        sleep(5);
+        
+        return 0;
+    }
 
 #### Design principles
 Consider to use single ExecutionPool object (across whole application) with multiple queues and streams.
-Combine queues and streams for free to achive your goals
+Combine queues and streams for free to achieve your goals
 Be free to assign tasks to queue or operate stream even from the inside of it's callback.
 
 #### Tech. details
