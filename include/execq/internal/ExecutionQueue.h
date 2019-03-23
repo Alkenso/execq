@@ -61,6 +61,7 @@ namespace execq
             virtual Task nextTask() final;
             
         private:
+            void pushTask(Task&& task);
             void queueThreadWorker();
             void waitPendingTasks();
             
@@ -109,12 +110,12 @@ void execq::details::ExecutionQueue<T>::pushImpl(std::unique_ptr<T> object)
     m_pendingTaskCount++;
     
     std::shared_ptr<T> sharedObject = std::move(object);
-    m_taskQueue.push(Task([this, sharedObject] () {
+    pushTask([this, sharedObject] () {
         m_executor(m_shouldQuit, std::move(*sharedObject));
         
         m_pendingTaskCount--;
         m_taskCompleteCondition.notify_one();
-    }));
+    });
     
     m_delegate.get().queueDidReceiveNewTask();
     m_taskQueueCondition.notify_one();
@@ -130,6 +131,13 @@ execq::details::Task execq::details::ExecutionQueue<T>::nextTask()
 }
 
 // Private
+
+template <typename T>
+void execq::details::ExecutionQueue<T>::pushTask(Task&& task)
+{
+    std::lock_guard<std::mutex> lock(m_taskQueueMutex);
+    m_taskQueue.push(std::move(task));
+}
 
 template <typename T>
 void execq::details::ExecutionQueue<T>::queueThreadWorker()
