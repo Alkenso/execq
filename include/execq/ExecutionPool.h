@@ -27,9 +27,11 @@
 #include "execq/internal/ExecutionStream.h"
 #include "execq/internal/ExecutionQueue.h"
 #include "execq/internal/TaskProviderList.h"
-#include "execq/internal/ExecutionPoolUtils.h"
+#include "execq/internal/ThreadWorker.h"
 
+#include <map>
 #include <vector>
+#include <memory>
 
 namespace execq
 {
@@ -37,7 +39,7 @@ namespace execq
      * @class ExecutionPool
      * @brief ThreadPool-like object that provides concurrent task execution. Tasks are provided by 'ExecutionQueue' instances.
      */
-    class ExecutionPool: private details::IExecutionQueueDelegate, private details::IExecutionStreamDelegate
+    class ExecutionPool: private details::IExecutionQueueDelegate, private details::IExecutionStreamDelegate, private details::IThreadWorkerDelegate
     {
     public:
         /**
@@ -50,9 +52,18 @@ namespace execq
         /**
          * @brief Creates execution queue with specific processing function.
          * @discussion All objects pushed into the queue will be processed on either one of pool threads or on the queue-specific thread.
+         * @discussion Tasks in the queue run concurrently on available threads.
          */
         template <typename T>
-        std::unique_ptr<IExecutionQueue<T>> createExecutionQueue(std::function<void(const std::atomic_bool& shouldQuit, T object)> executor);
+        std::unique_ptr<IExecutionQueue<T>> createConcurrentExecutionQueue(std::function<void(const std::atomic_bool& shouldQuit, T object)> executor);
+        
+        /**
+         * @brief Creates execution queue with specific processing function.
+         * @discussion All objects pushed into the queue will be processed on either one of pool threads or on the queue-specific thread.
+         * @discussion Tasks in the queue run in serial (one-by-one) order.
+         */
+        template <typename T>
+        std::unique_ptr<IExecutionQueue<T>> createSerialExecutionQueue(std::function<void(const std::atomic_bool& shouldQuit, T object)> executor);
         
         /**
          * @brief Creates execution stream with specific executee function. Stream is stopped by default.
@@ -70,11 +81,17 @@ namespace execq
         virtual void unregisterStreamTaskProvider(const details::ITaskProvider& taskProvider) final;
         virtual void streamDidStart() final;
         
+    private: // details::IThreadWorkerDelegate
+        virtual void workerDidFinishTask() final;
+        virtual bool shouldQuit() const final;
+        
     private:
         void registerTaskProvider(details::ITaskProvider& taskProvider);
         void unregisterTaskProvider(const details::ITaskProvider& taskProvider);
-        void workerThread();
         void shutdown();
+        
+        bool startTask(details::Task&& task);
+        void schedulerThread();
         
     private:
         std::atomic_bool m_shouldQuit { false };
@@ -83,12 +100,19 @@ namespace execq
         std::mutex m_providersMutex;
         std::condition_variable m_providersCondition;
         
-        std::vector<std::future<void>> m_threads;
+        std::vector<std::unique_ptr<details::ThreadWorker>> m_workers;
+        std::map<const details::ITaskProvider*, std::shared_ptr<details::ThreadWorker>> m_additionalWorkers;
     };
 }
 
 template <typename T>
-std::unique_ptr<execq::IExecutionQueue<T>> execq::ExecutionPool::createExecutionQueue(std::function<void(const std::atomic_bool& shouldQuit, T object)> executor)
+std::unique_ptr<execq::IExecutionQueue<T>> execq::ExecutionPool::createConcurrentExecutionQueue(std::function<void(const std::atomic_bool& shouldQuit, T object)> executor)
 {
-    return std::unique_ptr<details::ExecutionQueue<T>>(new details::ExecutionQueue<T>(*this, std::move(executor)));
+    return std::unique_ptr<details::ExecutionQueue<T>>(new details::ExecutionQueue<T>(false, *this, std::move(executor)));
+}
+
+template <typename T>
+std::unique_ptr<execq::IExecutionQueue<T>> execq::ExecutionPool::createSerialExecutionQueue(std::function<void(const std::atomic_bool& shouldQuit, T object)> executor)
+{
+    return std::unique_ptr<details::ExecutionQueue<T>>(new details::ExecutionQueue<T>(true, *this, std::move(executor)));
 }

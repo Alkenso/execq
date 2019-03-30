@@ -22,56 +22,60 @@
  * SOFTWARE.
  */
 
-#include "ExecutionPoolUtils.h"
+#include "ThreadWorker.h"
 
-namespace
+execq::details::ThreadWorker::ThreadWorker(IThreadWorkerDelegate& delegate)
+: m_delegate(delegate)
+{}
+
+execq::details::ThreadWorker::~ThreadWorker()
 {
-    execq::details::Task ReceiveNextTask(execq::details::ITaskProvider& taskProvider, std::condition_variable& taskCondition,
-                                         std::mutex& taskMutex, const std::atomic_bool& shouldQuit)
+    if (m_thread.joinable())
     {
-        execq::details::Task task;
-        while (true)
-        {
-            std::unique_lock<std::mutex> lock(taskMutex);
-            
-            task = taskProvider.nextTask();
-            if (task.valid() || shouldQuit)
-            {
-                break;
-            }
-            
-            taskCondition.wait(lock);
-        }
-        
-        return task;
+        m_thread.join();
     }
 }
 
-void execq::details::WorkerThread(ITaskProvider& taskProvider, std::condition_variable& taskCondition, std::mutex& taskMutex, const std::atomic_bool& shouldQuit)
+bool execq::details::ThreadWorker::startTask(details::Task&& task)
+{
+    const bool alreadyBusy = m_busy.exchange(true);
+    if (alreadyBusy)
+    {
+        return false;
+    }
+    
+    if (!m_thread.joinable())
+    {
+        m_thread = std::thread(&ThreadWorker::threadMain, this);
+    }
+    
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_task = std::move(task);
+    m_condition.notify_one();
+    
+    return true;
+}
+
+void execq::details::ThreadWorker::threadMain()
 {
     while (true)
     {
-        Task task = ReceiveNextTask(taskProvider, taskCondition, taskMutex, shouldQuit);
-        if (task.valid())
+        std::unique_lock<std::mutex> lock(m_mutex);
+        if (m_task.valid())
         {
-            task();
+            m_task();
+            m_task = details::Task();
+            
+            m_busy = false;
+            m_delegate.workerDidFinishTask();
         }
-        else if (shouldQuit)
+        
+        if (m_delegate.shouldQuit())
         {
             break;
         }
+        
+        m_condition.wait(lock);
     }
 }
 
-execq::details::Task execq::details::PopTaskFromQueue(std::queue<Task>& queue)
-{
-    if (queue.empty())
-    {
-        return Task();
-    }
-    
-    Task task = std::move(queue.front());
-    queue.pop();
-    
-    return task;
-}

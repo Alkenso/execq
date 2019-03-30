@@ -25,8 +25,9 @@
 #pragma once
 
 #include "execq/IExecutionQueue.h"
-#include "execq/internal/ExecutionPoolUtils.h"
+#include "execq/internal/ITaskProvider.h"
 
+#include <queue>
 #include <mutex>
 #include <thread>
 #include <atomic>
@@ -40,7 +41,7 @@ namespace execq
         {
         public:
             virtual ~IExecutionQueueDelegate() = default;
-            
+
             virtual void registerQueueTaskProvider(ITaskProvider& taskProvider) = 0;
             virtual void unregisterQueueTaskProvider(const details::ITaskProvider& taskProvider) = 0;
             virtual void queueDidReceiveNewTask() = 0;
@@ -51,7 +52,7 @@ namespace execq
         class ExecutionQueue: public IExecutionQueue<T>, private ITaskProvider
         {
         public:
-            ExecutionQueue(IExecutionQueueDelegate& delegate, std::function<void(const std::atomic_bool& shouldQuit, T object)> executor);
+            ExecutionQueue(const bool serial, IExecutionQueueDelegate& delegate, std::function<void(const std::atomic_bool& shouldQuit, T object)> executor);
             ~ExecutionQueue();
             
         private: // IExecutionQueue
@@ -61,34 +62,30 @@ namespace execq
             virtual Task nextTask() final;
             
         private:
-            void pushTask(Task&& task);
-            void queueThreadWorker();
             void waitPendingTasks();
             
         private:
             std::atomic_bool m_shouldQuit { false };
             
-            std::atomic_size_t m_pendingTaskCount { 0 };
-            std::mutex m_taskCompleteMutex;
-            std::condition_variable m_taskCompleteCondition;
+            size_t m_tasksRunningCount = 0;
             
-            std::queue<Task> m_taskQueue;
+            std::queue<std::unique_ptr<T>> m_taskQueue;
             std::mutex m_taskQueueMutex;
             std::condition_variable m_taskQueueCondition;
             
+            const bool m_isSerial;
             std::reference_wrapper<IExecutionQueueDelegate> m_delegate;
             std::function<void(const std::atomic_bool& shouldQuit, T object)> m_executor;
-            
-            std::future<void> m_thread;
         };
     }
 }
 
 template <typename T>
-execq::details::ExecutionQueue<T>::ExecutionQueue(IExecutionQueueDelegate& delegate, std::function<void(const std::atomic_bool& shouldQuit, T object)> executor)
-: m_delegate(delegate)
+execq::details::ExecutionQueue<T>::ExecutionQueue(const bool serial, IExecutionQueueDelegate& delegate,
+                                                  std::function<void(const std::atomic_bool& shouldQuit, T object)> executor)
+: m_isSerial(serial)
+, m_delegate(delegate)
 , m_executor(std::move(executor))
-, m_thread(std::async(std::launch::async, std::bind(&ExecutionQueue::queueThreadWorker, this)))
 {
     m_delegate.get().registerQueueTaskProvider(*this);
 }
@@ -97,9 +94,9 @@ template <typename T>
 execq::details::ExecutionQueue<T>::~ExecutionQueue()
 {
     m_shouldQuit = true;
-    m_delegate.get().unregisterQueueTaskProvider(*this);
     m_taskQueueCondition.notify_all();
     waitPendingTasks();
+    m_delegate.get().unregisterQueueTaskProvider(*this);
 }
 
 // IExecutionQueue
@@ -107,18 +104,10 @@ execq::details::ExecutionQueue<T>::~ExecutionQueue()
 template <typename T>
 void execq::details::ExecutionQueue<T>::pushImpl(std::unique_ptr<T> object)
 {
-    m_pendingTaskCount++;
-    
-    std::shared_ptr<T> sharedObject = std::move(object);
-    pushTask([this, sharedObject] () {
-        m_executor(m_shouldQuit, std::move(*sharedObject));
-        
-        m_pendingTaskCount--;
-        m_taskCompleteCondition.notify_one();
-    });
+    std::lock_guard<std::mutex> lock(m_taskQueueMutex);
+    m_taskQueue.push(std::move(object));
     
     m_delegate.get().queueDidReceiveNewTask();
-    m_taskQueueCondition.notify_one();
 }
 
 // ITaskProvider
@@ -127,41 +116,41 @@ template <typename T>
 execq::details::Task execq::details::ExecutionQueue<T>::nextTask()
 {
     std::lock_guard<std::mutex> lock(m_taskQueueMutex);
-    return PopTaskFromQueue(m_taskQueue);
+    if (m_isSerial && m_tasksRunningCount > 0)
+    {
+        return Task();
+    }
+    
+    std::unique_ptr<T> object = PopFromQueue(m_taskQueue);
+    if (!object)
+    {
+        return Task();
+    }
+    
+    m_tasksRunningCount++;
+    
+    std::shared_ptr<T> sharedObject = std::move(object);
+    return Task([this, sharedObject] {
+        m_executor(m_shouldQuit, std::move(*sharedObject));
+        
+        std::lock_guard<std::mutex> lock(m_taskQueueMutex);
+        m_tasksRunningCount--;
+        m_taskQueueCondition.notify_one();
+        if (m_isSerial && !m_taskQueue.empty())
+        {
+            m_delegate.get().queueDidReceiveNewTask();
+        }
+    });
 }
 
 // Private
 
 template <typename T>
-void execq::details::ExecutionQueue<T>::pushTask(Task&& task)
-{
-    std::lock_guard<std::mutex> lock(m_taskQueueMutex);
-    m_taskQueue.push(std::move(task));
-}
-
-template <typename T>
-void execq::details::ExecutionQueue<T>::queueThreadWorker()
-{
-    class NonblockingTaskProvider: public ITaskProvider
-    {
-    public:
-        explicit NonblockingTaskProvider(std::queue<Task>& taskQueue) : m_taskQueueRef(taskQueue) {}
-        virtual Task nextTask() final { return PopTaskFromQueue(m_taskQueueRef); }
-        
-    private:
-        std::queue<Task>& m_taskQueueRef;
-    };
-    
-    NonblockingTaskProvider taskProvider(m_taskQueue);
-    WorkerThread(taskProvider, m_taskQueueCondition, m_taskQueueMutex, m_shouldQuit);
-}
-
-template <typename T>
 void execq::details::ExecutionQueue<T>::waitPendingTasks()
 {
-    std::unique_lock<std::mutex> lock(m_taskCompleteMutex);
-    while (m_pendingTaskCount > 0)
+    std::unique_lock<std::mutex> lock(m_taskQueueMutex);
+    while (m_tasksRunningCount > 0 || !m_taskQueue.empty())
     {
-        m_taskCompleteCondition.wait(lock);
+        m_taskQueueCondition.wait(lock);
     }
 }

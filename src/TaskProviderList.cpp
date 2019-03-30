@@ -40,15 +40,8 @@ void execq::details::TaskProviderList::remove(const ITaskProvider& taskProvider)
     }
 }
 
-execq::details::Task execq::details::TaskProviderList::nextTask()
+std::unique_ptr<execq::details::StoredTask> execq::details::TaskProviderList::nextTask()
 {
-    execq::details::Task task;
-    
-    if (m_taskProviders.empty())
-    {
-        return task;
-    }
-    
     const size_t taskProvidersCount = m_taskProviders.size();
     const auto listEndIt = m_taskProviders.end();
     
@@ -59,15 +52,16 @@ execq::details::Task execq::details::TaskProviderList::nextTask()
             m_currentTaskProviderIt = m_taskProviders.begin();
         }
         
-        task = (*m_currentTaskProviderIt)->nextTask();
+        ITaskProvider* provider = *m_currentTaskProviderIt;
+        Task task = provider->nextTask();
         
         m_currentTaskProviderIt++;
         
         if (task.valid())
         {
-            break;
+            return std::unique_ptr<StoredTask>(new StoredTask { std::move(task), *provider });
         }
     }
     
-    return task;
+    return nullptr;
 }

@@ -25,7 +25,7 @@
 #pragma once
 
 #include "execq/IExecutionStream.h"
-#include "execq/internal/ExecutionPoolUtils.h"
+#include "execq/internal/ITaskProvider.h"
 
 #include <mutex>
 #include <thread>

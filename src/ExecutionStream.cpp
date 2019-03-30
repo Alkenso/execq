@@ -76,11 +76,6 @@ execq::details::Task execq::details::ExecutionStream::nextTask()
 
 // Private
 
-void execq::details::ExecutionStream::streamThreadWorker()
-{
-    WorkerThread(*this, m_taskStartCondition, m_taskStartMutex, m_shouldQuit);
-}
-
 void execq::details::ExecutionStream::waitPendingTasks()
 {
     std::unique_lock<std::mutex> lock(m_taskCompleteMutex);

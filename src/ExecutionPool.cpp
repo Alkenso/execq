@@ -24,6 +24,14 @@
 
 #include "ExecutionPool.h"
 
+namespace
+{
+    std::unique_ptr<execq::details::ThreadWorker> CreateWorker(execq::details::IThreadWorkerDelegate& delegate)
+    {
+        return std::unique_ptr<execq::details::ThreadWorker>(new execq::details::ThreadWorker(delegate));
+    }
+}
+
 execq::ExecutionPool::ExecutionPool()
 {
     const uint32_t defaultThreadCount = 4;
@@ -32,7 +40,7 @@ execq::ExecutionPool::ExecutionPool()
     const uint32_t threadCount = hardwareThreadCount ? hardwareThreadCount : defaultThreadCount;
     for (uint32_t i = 0; i < threadCount; i++)
     {
-        m_threads.emplace_back(std::async(std::launch::async, std::bind(&ExecutionPool::workerThread, this)));
+        m_workers.emplace_back(CreateWorker(*this));
     }
 }
 
@@ -87,6 +95,17 @@ void execq::ExecutionPool::streamDidStart()
     m_providersCondition.notify_all();
 }
 
+void execq::ExecutionPool::workerDidFinishTask()
+{
+    std::lock_guard<std::mutex> lock(m_providersMutex);
+    m_providersCondition.notify_one();
+}
+
+bool execq::ExecutionPool::shouldQuit() const
+{
+    return m_shouldQuit;
+}
+
 // Private
 
 void execq::ExecutionPool::registerTaskProvider(details::ITaskProvider& taskProvider)
@@ -94,6 +113,7 @@ void execq::ExecutionPool::registerTaskProvider(details::ITaskProvider& taskProv
     std::lock_guard<std::mutex> lock(m_providersMutex);
     
     m_taskProviders.add(taskProvider);
+    m_additionalWorkers.emplace(&taskProvider, CreateWorker(*this));
 }
 
 void execq::ExecutionPool::unregisterTaskProvider(const details::ITaskProvider& taskProvider)
@@ -101,9 +121,62 @@ void execq::ExecutionPool::unregisterTaskProvider(const details::ITaskProvider& 
     std::lock_guard<std::mutex> lock(m_providersMutex);
     
     m_taskProviders.remove(taskProvider);
+    m_additionalWorkers.erase(&taskProvider);
 }
 
-void execq::ExecutionPool::workerThread()
+bool execq::ExecutionPool::startTask(details::Task&& task)
 {
-    WorkerThread(m_taskProviders, m_providersCondition, m_providersMutex, m_shouldQuit);
+    for (const auto& worker : m_workers)
+    {
+        if (worker->startTask(std::move(task)))
+        {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+void execq::ExecutionPool::schedulerThread()
+{
+    std::list<std::pair<details::Task, std::shared_ptr<details::ThreadWorker>>> pendingTasks;
+    while (true)
+    {
+        auto it = pendingTasks.begin();
+        while (it != pendingTasks.end())
+        {
+            if (startTask(std::move(it->first)) || it->second->startTask(std::move(it->first)))
+            {
+                it = pendingTasks.erase(it);
+            }
+            else
+            {
+                it++;
+            }
+        }
+        
+        std::unique_lock<std::mutex> lock(m_providersMutex);
+        std::unique_ptr<details::StoredTask> storedTask = m_taskProviders.nextTask();
+        if (storedTask)
+        {
+            if (startTask(std::move(storedTask->task)))
+            {
+                continue;
+            }
+            
+            const auto providerWorker = m_additionalWorkers[&storedTask->associatedProvider];
+            if (!providerWorker || providerWorker->startTask(std::move(storedTask->task)))
+            {
+                continue;
+            }
+            
+            pendingTasks.emplace_back(std::move(storedTask->task), providerWorker);
+        }
+        else if (m_shouldQuit) // all tasks have been processed
+        {
+            break;
+        }
+    
+        m_providersCondition.wait(lock);
+    }
 }

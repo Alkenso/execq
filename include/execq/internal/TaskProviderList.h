@@ -32,19 +32,24 @@ namespace execq
 {
     namespace details
     {
-        class TaskProviderList: public ITaskProvider
+        struct StoredTask
+        {
+            Task task;
+            ITaskProvider& associatedProvider;
+        };
+        
+        class TaskProviderList
         {
         public:
             void add(ITaskProvider& taskProvider);
             void remove(const ITaskProvider& taskProvider);
             
-        public: // ITaskProvider
-            virtual Task nextTask() final;
+            std::unique_ptr<StoredTask> nextTask();
             
         private:
-            using TaskProviders_mt = std::list<ITaskProvider*>;
-            TaskProviders_mt m_taskProviders;
-            TaskProviders_mt::iterator m_currentTaskProviderIt;
+            using TaskProviders_lt = std::list<ITaskProvider*>;
+            TaskProviders_lt m_taskProviders;
+            TaskProviders_lt::iterator m_currentTaskProviderIt;
         };
     }
 }

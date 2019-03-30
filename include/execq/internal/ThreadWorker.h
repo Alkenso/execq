@@ -26,13 +26,43 @@
 
 #include "execq/internal/ITaskProvider.h"
 
-#include <queue>
+#include <atomic>
+#include <thread>
+#include <condition_variable>
 
 namespace execq
 {
     namespace details
     {
-        void WorkerThread(ITaskProvider& taskProvider, std::condition_variable& taskCondition, std::mutex& taskMutex, const std::atomic_bool& shouldQuit);
-        Task PopTaskFromQueue(std::queue<Task>& queue);
+        class IThreadWorkerDelegate
+        {
+        public:
+            virtual void workerDidFinishTask() = 0;
+            virtual bool shouldQuit() const = 0;
+        };
+        
+        class ThreadWorker
+        {
+        public:
+            explicit ThreadWorker(IThreadWorkerDelegate& delegate);
+            ~ThreadWorker();
+            
+            bool startTask(details::Task&& task);
+            
+        private:
+            void threadMain();
+            
+        private:
+            std::condition_variable m_condition;
+            std::mutex m_mutex;
+            std::atomic_bool m_busy;
+            std::thread m_thread;
+            
+            details::Task m_task;
+            
+            IThreadWorkerDelegate& m_delegate;
+        };
     }
 }
+
+
