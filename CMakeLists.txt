@@ -32,6 +32,7 @@ set(LIB_SOURCES
     src/ExecutionStream.cpp
     src/ExecutionPool.cpp
     src/CancelTokenProvider.cpp
+    src/CancelTokenProviderTest.cpp
 )
 
 add_library(execq STATIC ${LIB_SOURCES})

@@ -27,32 +27,28 @@
 execq::details::CancelToken execq::details::CancelTokenProvider::token()
 {
     std::lock_guard<std::mutex> lock(m_mutex);
-    if (!m_currentToken)
-    {
-        m_currentToken = std::make_shared<std::atomic_bool>(false);
-    }
     return m_currentToken;
+}
+
+void execq::details::CancelTokenProvider::cancel()
+{
+    cancelAndRenew(false);
 }
 
 void execq::details::CancelTokenProvider::cancelAndRenew()
 {
-    cancelAndDrop(true);
+    cancelAndRenew(true);
 }
 
-void execq::details::CancelTokenProvider::shutdown()
-{
-    cancelAndDrop(false);
-}
-
-void execq::details::CancelTokenProvider::cancelAndDrop(const bool drop)
+void execq::details::CancelTokenProvider::cancelAndRenew(const bool renew)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     if (m_currentToken)
     {
         *m_currentToken = true;
     }
-    if (drop)
+    if (renew)
     {
-        m_currentToken = nullptr;
+        m_currentToken = std::make_shared<std::atomic_bool>(false);
     }
 }

@@ -22,30 +22,29 @@
  * SOFTWARE.
  */
 
-#pragma once
+#include "CancelTokenProvider.h"
 
-#include <atomic>
-#include <memory>
-#include <mutex>
+#include <gmock/gmock.h>
 
-namespace execq
+TEST(ExecutionPool, CancelTokenProvider)
 {
-    namespace details
-    {
-        using CancelToken = std::shared_ptr<std::atomic_bool>;
-        class CancelTokenProvider
-        {
-        public:
-            CancelToken token();
-            void cancel();
-            void cancelAndRenew();
-            
-        private:
-            void cancelAndRenew(const bool renew);
-            
-        private:
-            CancelToken m_currentToken = std::make_shared<std::atomic_bool>(false);
-            std::mutex m_mutex;
-        };
-    }
+    execq::details::CancelTokenProvider provider;
+    
+    execq::details::CancelToken token = provider.token();
+    ASSERT_NE(token, nullptr);
+    
+    // be default, token is not canceled
+    EXPECT_FALSE(token->load());
+    
+    provider.cancel();
+    
+    // both old and current provider's token are canceled
+    EXPECT_TRUE(token->load());
+    EXPECT_TRUE(provider.token()->load());
+    
+    provider.cancelAndRenew();
+    
+    // old token is canceled, current provider's token is not
+    EXPECT_TRUE(token->load());
+    EXPECT_FALSE(provider.token()->load());
 }

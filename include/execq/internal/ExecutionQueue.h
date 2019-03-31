@@ -100,7 +100,7 @@ execq::details::ExecutionQueue<T, R>::ExecutionQueue(const bool serial, IExecuti
 template <typename T, typename R>
 execq::details::ExecutionQueue<T, R>::~ExecutionQueue()
 {
-    m_cancelTokenProvider.shutdown();
+    m_cancelTokenProvider.cancel();
     waitPendingTasks();
     m_delegate.get().unregisterQueueTaskProvider(*this);
 }
