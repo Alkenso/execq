@@ -115,12 +115,10 @@ TEST(ExecutionPool, ExecutionQueue_TaskExecutionWhenQueueDestroyed)
 {
     execq::ExecutionPool pool;
     
-    ::testing::MockFunction<void(const std::atomic_bool&, std::string)> mockExecutor;
     std::promise<std::pair<bool, std::string>> isExecutedPromise;
     auto isExecuted = isExecutedPromise.get_future();
     auto queue = pool.createConcurrentExecutionQueue<std::string, void>([&isExecutedPromise] (const std::atomic_bool& shouldQuit, std::string&& object) {
         // wait for double time comparing to time waiting before reset
-        WaitForLongTermJob();
         WaitForLongTermJob();
         isExecutedPromise.set_value(std::make_pair(shouldQuit.load(), object));
     });
@@ -186,6 +184,9 @@ TEST(ExecutionPool, ExecutionQueue_Serial)
     
     EXPECT_CALL(delegate, unregisterQueueTaskProvider(::testing::_))
     .WillOnce(::testing::Return());
+    
+    EXPECT_CALL(mockExecutor, Call(CompareWithAtomic(false), CompareRvalue("qwe")))
+    .Times(2).WillRepeatedly(::testing::Return());
     
     // push few object into the queue
     queue.push("qwe");

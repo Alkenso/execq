@@ -24,53 +24,28 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
-#include <future>
+#include <mutex>
 
 namespace execq
 {
     namespace details
     {
-        template <typename T, typename R>
-        struct QueuedObject
+        using CancelToken = std::shared_ptr<std::atomic_bool>;
+        class CancelTokenProvider
         {
-            T object;
-            std::promise<R> promise;
+        public:
+            CancelToken token();
+            void cancelAndRenew();
+            void shutdown();
+            
+        private:
+            void cancelAndDrop(const bool drop);
+            
+        private:
+            CancelToken m_currentToken = std::make_shared<std::atomic_bool>(false);
+            std::mutex m_mutex;
         };
     }
-    
-    template <typename Unused>
-    class IExecutionQueue;
-    
-    template <typename T, typename R>
-    class IExecutionQueue <R(T)>
-    {
-    public:
-        virtual ~IExecutionQueue() = default;
-        
-        /**
-         * @brief Pushed an object to be process on the queue.
-         */
-        template <typename Y = T>
-        std::future<R> push(Y&& object);
-        
-        virtual void cancel() = 0;
-        
-    private:
-        virtual void pushImpl(std::unique_ptr<details::QueuedObject<T, R>> object) = 0;
-    };
-}
-
-template <typename T, typename R>
-template <typename Y>
-std::future<R> execq::IExecutionQueue<R(T)>::push(Y&& object)
-{
-    using QueuedObject = details::QueuedObject<T, R>;
-    
-    std::promise<R> promise;
-    std::future<R> future = promise.get_future();
-    
-    pushImpl(std::unique_ptr<QueuedObject>(new QueuedObject { std::forward<Y>(object), std::move(promise) }));
-        
-    return future;
 }

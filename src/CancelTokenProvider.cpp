@@ -22,55 +22,37 @@
  * SOFTWARE.
  */
 
-#pragma once
+#include "CancelTokenProvider.h"
 
-#include <memory>
-#include <future>
-
-namespace execq
+execq::details::CancelToken execq::details::CancelTokenProvider::token()
 {
-    namespace details
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_currentToken)
     {
-        template <typename T, typename R>
-        struct QueuedObject
-        {
-            T object;
-            std::promise<R> promise;
-        };
+        m_currentToken = std::make_shared<std::atomic_bool>(false);
     }
-    
-    template <typename Unused>
-    class IExecutionQueue;
-    
-    template <typename T, typename R>
-    class IExecutionQueue <R(T)>
-    {
-    public:
-        virtual ~IExecutionQueue() = default;
-        
-        /**
-         * @brief Pushed an object to be process on the queue.
-         */
-        template <typename Y = T>
-        std::future<R> push(Y&& object);
-        
-        virtual void cancel() = 0;
-        
-    private:
-        virtual void pushImpl(std::unique_ptr<details::QueuedObject<T, R>> object) = 0;
-    };
+    return m_currentToken;
 }
 
-template <typename T, typename R>
-template <typename Y>
-std::future<R> execq::IExecutionQueue<R(T)>::push(Y&& object)
+void execq::details::CancelTokenProvider::cancelAndRenew()
 {
-    using QueuedObject = details::QueuedObject<T, R>;
-    
-    std::promise<R> promise;
-    std::future<R> future = promise.get_future();
-    
-    pushImpl(std::unique_ptr<QueuedObject>(new QueuedObject { std::forward<Y>(object), std::move(promise) }));
-        
-    return future;
+    cancelAndDrop(true);
+}
+
+void execq::details::CancelTokenProvider::shutdown()
+{
+    cancelAndDrop(false);
+}
+
+void execq::details::CancelTokenProvider::cancelAndDrop(const bool drop)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_currentToken)
+    {
+        *m_currentToken = true;
+    }
+    if (drop)
+    {
+        m_currentToken = nullptr;
+    }
 }

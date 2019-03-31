@@ -25,11 +25,13 @@ set(LIB_SOURCES
     include/execq/internal/ExecutionStream.h
     include/execq/internal/ExecutionQueue.h
     include/execq/internal/ThreadWorker.h
+    include/execq/internal/CancelTokenProvider.h
 
     src/ThreadWorker.cpp
     src/TaskProviderList.cpp
     src/ExecutionStream.cpp
     src/ExecutionPool.cpp
+    src/CancelTokenProvider.cpp
 )
 
 add_library(execq STATIC ${LIB_SOURCES})

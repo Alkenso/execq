@@ -26,6 +26,7 @@
 
 #include "execq/IExecutionQueue.h"
 #include "execq/internal/ITaskProvider.h"
+#include "execq/internal/CancelTokenProvider.h"
 
 #include <queue>
 #include <mutex>
@@ -54,6 +55,9 @@ namespace execq
             ExecutionQueue(const bool serial, IExecutionQueueDelegate& delegate, std::function<R(const std::atomic_bool& shouldQuit, T&& object)> executor);
             ~ExecutionQueue();
             
+        public: // IExecutionQueue
+            virtual void cancel() final;
+            
         private: // IExecutionQueue
             virtual void pushImpl(std::unique_ptr<QueuedObject<T, R>> object) final;
             
@@ -61,21 +65,20 @@ namespace execq
             virtual Task nextTask() final;
             
         private:
-            void execute(T&& object, std::promise<void>& promise);
+            void execute(T&& object, std::promise<void>& promise, const std::atomic_bool& canceled);
             template <typename Y>
-            void execute(T&& object, std::promise<Y>& promise);
+            void execute(T&& object, std::promise<Y>& promise, const std::atomic_bool& canceled);
             
             std::unique_ptr<QueuedObject<T, R>> popObject();
             void waitPendingTasks();
             
         private:
-            std::atomic_bool m_shouldQuit { false };
-            
             size_t m_tasksRunningCount = 0;
             
             std::queue<std::unique_ptr<QueuedObject<T, R>>> m_taskQueue;
             std::mutex m_taskQueueMutex;
             std::condition_variable m_taskQueueCondition;
+            CancelTokenProvider m_cancelTokenProvider;
             
             const bool m_isSerial;
             std::reference_wrapper<IExecutionQueueDelegate> m_delegate;
@@ -97,12 +100,18 @@ execq::details::ExecutionQueue<T, R>::ExecutionQueue(const bool serial, IExecuti
 template <typename T, typename R>
 execq::details::ExecutionQueue<T, R>::~ExecutionQueue()
 {
-    m_shouldQuit = true;
+    m_cancelTokenProvider.shutdown();
     waitPendingTasks();
     m_delegate.get().unregisterQueueTaskProvider(*this);
 }
 
 // IExecutionQueue
+
+template <typename T, typename R>
+void execq::details::ExecutionQueue<T, R>::cancel()
+{
+    m_cancelTokenProvider.cancelAndRenew();
+}
 
 template <typename T, typename R>
 void execq::details::ExecutionQueue<T, R>::pushImpl(std::unique_ptr<QueuedObject<T, R>> object)
@@ -134,8 +143,9 @@ execq::details::Task execq::details::ExecutionQueue<T, R>::nextTask()
     
     
     std::shared_ptr<QueuedObject<T, R>> sharedObject = std::move(object);
-    return Task([this, sharedObject] {
-        execute(std::move(sharedObject->object), sharedObject->promise);
+    CancelToken cancelToken = m_cancelTokenProvider.token();
+    return Task([this, sharedObject, cancelToken] {
+        execute(std::move(sharedObject->object), sharedObject->promise, *cancelToken);
         
         std::lock_guard<std::mutex> lock(m_taskQueueMutex);
         m_tasksRunningCount--;
@@ -150,17 +160,17 @@ execq::details::Task execq::details::ExecutionQueue<T, R>::nextTask()
 // Private
 
 template <typename T, typename R>
-void execq::details::ExecutionQueue<T, R>::execute(T&& object, std::promise<void>& promise)
+void execq::details::ExecutionQueue<T, R>::execute(T&& object, std::promise<void>& promise, const std::atomic_bool& canceled)
 {
-    m_executor(m_shouldQuit, std::move(object));
+    m_executor(canceled, std::move(object));
     promise.set_value();
 }
 
 template <typename T, typename R>
 template <typename Y>
-void execq::details::ExecutionQueue<T, R>::execute(T&& object, std::promise<Y>& promise)
+void execq::details::ExecutionQueue<T, R>::execute(T&& object, std::promise<Y>& promise, const std::atomic_bool& canceled)
 {
-    promise.set_value(m_executor(m_shouldQuit, std::move(object)));
+    promise.set_value(m_executor(canceled, std::move(object)));
 }
 
 template <typename T, typename R>
