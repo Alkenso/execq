@@ -25,11 +25,25 @@
 #pragma once
 
 #include <memory>
+#include <future>
 
 namespace execq
 {
-    template <typename T>
-    class IExecutionQueue
+    namespace details
+    {
+        template <typename T, typename R>
+        struct QueuedObject
+        {
+            T object;
+            std::promise<R> promise;
+        };
+    }
+    
+    template <typename Unused>
+    class IExecutionQueue;
+    
+    template <typename T, typename R>
+    class IExecutionQueue <R(T)>
     {
     public:
         virtual ~IExecutionQueue() = default;
@@ -38,16 +52,23 @@ namespace execq
          * @brief Pushed an object to be process on the queue.
          */
         template <typename Y = T>
-        void push(Y&& object);
+        std::future<R> push(Y&& object);
         
     private:
-        virtual void pushImpl(std::unique_ptr<T> object) = 0;
+        virtual void pushImpl(std::unique_ptr<details::QueuedObject<T, R>> object) = 0;
     };
 }
 
-template <typename T>
+template <typename T, typename R>
 template <typename Y>
-void execq::IExecutionQueue<T>::push(Y&& object)
+std::future<R> execq::IExecutionQueue<R(T)>::push(Y&& object)
 {
-    pushImpl(std::unique_ptr<T>(new T(std::forward<Y>(object))));
+    using QueuedObject = details::QueuedObject<T, R>;
+    
+    std::promise<R> promise;
+    std::future<R> future = promise.get_future();
+    
+    pushImpl(std::unique_ptr<QueuedObject>(new QueuedObject { std::forward<Y>(object), std::move(promise) }));
+        
+    return future;
 }
