@@ -38,7 +38,6 @@ namespace execq
         {
         public:
             virtual void workerDidFinishTask() = 0;
-            virtual bool shouldQuit() const = 0;
         };
         
         class ThreadWorker
@@ -50,12 +49,15 @@ namespace execq
             bool startTask(details::Task&& task);
             
         private:
+            void shutdown();
+            Task waitTask(bool& shouldQuit);
             void threadMain();
             
         private:
+            bool m_shouldQuit = false;
+            std::atomic_bool m_busy { false };
             std::condition_variable m_condition;
             std::mutex m_mutex;
-            std::atomic_bool m_busy;
             std::thread m_thread;
             
             details::Task m_task;

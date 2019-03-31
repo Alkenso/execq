@@ -83,7 +83,6 @@ namespace execq
         
     private: // details::IThreadWorkerDelegate
         virtual void workerDidFinishTask() final;
-        virtual bool shouldQuit() const final;
         
     private:
         void registerTaskProvider(details::ITaskProvider& taskProvider);
@@ -102,6 +101,7 @@ namespace execq
         
         std::vector<std::unique_ptr<details::ThreadWorker>> m_workers;
         std::map<const details::ITaskProvider*, std::shared_ptr<details::ThreadWorker>> m_additionalWorkers;
+        std::thread m_schedulerThread;
     };
 }
 

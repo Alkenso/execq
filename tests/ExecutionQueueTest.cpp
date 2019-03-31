@@ -41,6 +41,12 @@ namespace
     {
         return value == arg;
     }
+    
+    MATCHER_P(SaveArgAddress, value, "")
+    {
+        *value = &arg;
+        return true;
+    }
 }
 
 TEST(ExecutionPool, ExecutionQueue_SingleTask)
@@ -48,16 +54,12 @@ TEST(ExecutionPool, ExecutionQueue_SingleTask)
     execq::ExecutionPool pool;
     
     ::testing::MockFunction<void(const std::atomic_bool&, std::string)> mockExecutor;
-    auto queue = pool.createExecutionQueue<std::string>(mockExecutor.AsStdFunction());
+    auto queue = pool.createConcurrentExecutionQueue<std::string>(mockExecutor.AsStdFunction());
     
-    EXPECT_CALL(mockExecutor, Call(CompareWithAtomic(false), "qwe"))
+    EXPECT_CALL(mockExecutor, Call(::testing::_, "qwe"))
     .WillOnce(::testing::Return());
     
     queue->push("qwe");
-    
-    
-    // wait some time to be sure that object has been delivered to corresponding thread.
-    WaitForLongTermJob();
 }
 
 TEST(ExecutionPool, ExecutionQueue_MultipleTasks)
@@ -65,20 +67,16 @@ TEST(ExecutionPool, ExecutionQueue_MultipleTasks)
     execq::ExecutionPool pool;
     
     ::testing::MockFunction<void(const std::atomic_bool&, uint32_t)> mockExecutor;
-    auto queue = pool.createExecutionQueue<uint32_t>(mockExecutor.AsStdFunction());
+    auto queue = pool.createConcurrentExecutionQueue<uint32_t>(mockExecutor.AsStdFunction());
     
-    const int count = 100;
-    EXPECT_CALL(mockExecutor, Call(CompareWithAtomic(false), ::testing::_))
+    const size_t count = 1000;
+    EXPECT_CALL(mockExecutor, Call(::testing::_, ::testing::_))
     .Times(count).WillRepeatedly(::testing::Return());
     
-    for (int i = 0; i < count; i++)
+    for (size_t i = 0; i < count; i++)
     {
         queue->push(arc4random());
     }
-    
-    
-    // wait some time to be sure that objects have been delivered to corresponding threads and processed.
-    WaitForLongTermJob();
 }
 
 TEST(ExecutionPool, ExecutionQueue_TaskExecutionWhenQueueDestroyed)
@@ -88,7 +86,7 @@ TEST(ExecutionPool, ExecutionQueue_TaskExecutionWhenQueueDestroyed)
     ::testing::MockFunction<void(const std::atomic_bool&, std::string)> mockExecutor;
     std::promise<std::pair<bool, std::string>> isExecutedPromise;
     auto isExecuted = isExecutedPromise.get_future();
-    auto queue = pool.createExecutionQueue<std::string>([&isExecutedPromise] (const std::atomic_bool& shouldQuit, std::string object) {
+    auto queue = pool.createConcurrentExecutionQueue<std::string>([&isExecutedPromise] (const std::atomic_bool& shouldQuit, std::string object) {
         // wait for double time comparing to time waiting before reset
         WaitForLongTermJob();
         WaitForLongTermJob();
@@ -96,9 +94,7 @@ TEST(ExecutionPool, ExecutionQueue_TaskExecutionWhenQueueDestroyed)
     });
     queue->push("qwe");
     
-    
-    // wait for enough time to push object into processing.
-    WaitForLongTermJob();
+    // delete queue
     queue.reset();
     
     ASSERT_EQ(isExecuted.wait_for(kTimeout), std::future_status::ready);
@@ -122,15 +118,14 @@ TEST(ExecutionPool, ExecutionQueue_Delegate)
     
     
     //  Queue must call 'register' method when created and 'unregister' method when destroyed.
-    EXPECT_CALL(delegate, registerQueueTaskProvider(::testing::_))
+    execq::details::ITaskProvider* registeredProvider = nullptr;
+    EXPECT_CALL(delegate, registerQueueTaskProvider(SaveArgAddress(&registeredProvider)))
     .WillOnce(::testing::Return());
-    
-    EXPECT_CALL(delegate, unregisterQueueTaskProvider(::testing::_))
-    .WillOnce(::testing::Return());
-    
     
     ::testing::MockFunction<void(const std::atomic_bool&, std::string)> mockExecutor;
-    execq::details::ExecutionQueue<std::string> queue(delegate, mockExecutor.AsStdFunction());
+    execq::details::ExecutionQueue<std::string> queue(false, delegate, mockExecutor.AsStdFunction());
+    
+    ASSERT_NE(registeredProvider, nullptr);
     
     EXPECT_CALL(delegate, queueDidReceiveNewTask())
     .WillOnce(::testing::Return());
@@ -140,7 +135,10 @@ TEST(ExecutionPool, ExecutionQueue_Delegate)
     
     queue.push("qwe");
     
+    execq::details::Task task = registeredProvider->nextTask();
+    ASSERT_TRUE(task.valid());
+    task();
     
-    // wait some time to be sure that object has been delivered to corresponding thread.
-    WaitForLongTermJob();
+    EXPECT_CALL(delegate, unregisterQueueTaskProvider(::testing::_))
+    .WillOnce(::testing::Return());
 }

@@ -30,6 +30,7 @@ execq::details::ThreadWorker::ThreadWorker(IThreadWorkerDelegate& delegate)
 
 execq::details::ThreadWorker::~ThreadWorker()
 {
+    shutdown();
     if (m_thread.joinable())
     {
         m_thread.join();
@@ -56,26 +57,54 @@ bool execq::details::ThreadWorker::startTask(details::Task&& task)
     return true;
 }
 
-void execq::details::ThreadWorker::threadMain()
+void execq::details::ThreadWorker::shutdown()
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_shouldQuit = true;
+    m_condition.notify_one();
+}
+
+execq::details::Task execq::details::ThreadWorker::waitTask(bool& shouldQuit)
 {
     while (true)
     {
         std::unique_lock<std::mutex> lock(m_mutex);
         if (m_task.valid())
         {
-            m_task();
-            m_task = details::Task();
+            Task task = std::move(m_task);
+            m_task = Task();
             
-            m_busy = false;
-            m_delegate.workerDidFinishTask();
+            return task;
         }
-        
-        if (m_delegate.shouldQuit())
+        else if (m_shouldQuit)
         {
+            shouldQuit = true;
             break;
         }
         
         m_condition.wait(lock);
+    }
+    
+    return Task();
+}
+
+void execq::details::ThreadWorker::threadMain()
+{
+    while (true)
+    {
+        bool shouldQuit = false;
+        Task task = waitTask(shouldQuit);
+        if (task.valid())
+        {
+            task();
+            
+            m_busy = false;
+            m_delegate.workerDidFinishTask();
+        }
+        else if (shouldQuit)
+        {
+            break;
+        }
     }
 }
 

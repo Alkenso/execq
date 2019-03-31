@@ -61,14 +61,13 @@ namespace execq
             virtual Task nextTask() final;
             
         private:
-            void streamThreadWorker();
             void waitPendingTasks();
             
         private:
             std::atomic_bool m_shouldQuit { false };
             std::atomic_bool m_started { false };
             
-            std::atomic_size_t m_pendingTaskCount { 0 };
+            size_t m_tasksRunningCount { 0 };
             std::mutex m_taskCompleteMutex;
             std::condition_variable m_taskCompleteCondition;
             
@@ -77,8 +76,6 @@ namespace execq
             
             std::reference_wrapper<IExecutionStreamDelegate> m_delegate;
             std::function<void(const std::atomic_bool& shouldQuit)> m_executee;
-            
-            std::future<void> m_thread;
         };
     }
 }

@@ -27,7 +27,6 @@
 execq::details::ExecutionStream::ExecutionStream(IExecutionStreamDelegate& delegate, std::function<void(const std::atomic_bool& shouldQuit)> executee)
 : m_delegate(delegate)
 , m_executee(std::move(executee))
-, m_thread(std::async(std::launch::async, std::bind(&ExecutionStream::streamThreadWorker, this)))
 {
     m_delegate.get().registerStreamTaskProvider(*this);
 }
@@ -36,9 +35,9 @@ execq::details::ExecutionStream::~ExecutionStream()
 {
     stop();
     m_shouldQuit = true;
-    m_delegate.get().unregisterStreamTaskProvider(*this);
     m_taskStartCondition.notify_all();
     waitPendingTasks();
+    m_delegate.get().unregisterStreamTaskProvider(*this);
 }
 
 // IExecutionStream
@@ -64,12 +63,14 @@ execq::details::Task execq::details::ExecutionStream::nextTask()
         return Task();
     }
     
-    m_pendingTaskCount++;
+    std::lock_guard<std::mutex> lock(m_taskCompleteMutex);
+    m_tasksRunningCount++;
     
     return Task([this] () {
         m_executee(m_shouldQuit);
         
-        m_pendingTaskCount--;
+        std::lock_guard<std::mutex> lock(m_taskCompleteMutex);
+        m_tasksRunningCount--;
         m_taskCompleteCondition.notify_one();
     });
 }
@@ -79,7 +80,7 @@ execq::details::Task execq::details::ExecutionStream::nextTask()
 void execq::details::ExecutionStream::waitPendingTasks()
 {
     std::unique_lock<std::mutex> lock(m_taskCompleteMutex);
-    while (m_pendingTaskCount > 0)
+    while (m_tasksRunningCount > 0)
     {
         m_taskCompleteCondition.wait(lock);
     }

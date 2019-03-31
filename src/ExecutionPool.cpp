@@ -33,6 +33,7 @@ namespace
 }
 
 execq::ExecutionPool::ExecutionPool()
+: m_schedulerThread(&ExecutionPool::schedulerThread, this)
 {
     const uint32_t defaultThreadCount = 4;
     const uint32_t hardwareThreadCount = std::thread::hardware_concurrency();
@@ -47,6 +48,7 @@ execq::ExecutionPool::ExecutionPool()
 execq::ExecutionPool::~ExecutionPool()
 {
     shutdown();
+    m_schedulerThread.join();
 }
 
 void execq::ExecutionPool::shutdown()
@@ -97,13 +99,7 @@ void execq::ExecutionPool::streamDidStart()
 
 void execq::ExecutionPool::workerDidFinishTask()
 {
-    std::lock_guard<std::mutex> lock(m_providersMutex);
     m_providersCondition.notify_one();
-}
-
-bool execq::ExecutionPool::shouldQuit() const
-{
-    return m_shouldQuit;
 }
 
 // Private

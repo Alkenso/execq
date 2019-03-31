@@ -14,7 +14,23 @@ OPTION(EXECQ_ENABLE_TESTING "Build execq's unit-tests." OFF)
 
 ### execq library ###
 
-aux_source_directory(src LIB_SOURCES)
+set(LIB_SOURCES
+    include/execq/IExecutionStream.h
+    include/execq/IExecutionQueue.h
+    include/execq/ExecutionPool.h
+    include/execq/execq.h
+
+    include/execq/internal/TaskProviderList.h
+    include/execq/internal/ITaskProvider.h
+    include/execq/internal/ExecutionStream.h
+    include/execq/internal/ExecutionQueue.h
+    include/execq/internal/ThreadWorker.h
+
+    src/ThreadWorker.cpp
+    src/TaskProviderList.cpp
+    src/ExecutionStream.cpp
+    src/ExecutionPool.cpp
+)
 
 add_library(execq STATIC ${LIB_SOURCES})
 
@@ -31,7 +47,11 @@ include_directories(execq PRIVATE
 ### execq unit-tests ###
 
 if (EXECQ_ENABLE_TESTING)
-    aux_source_directory(tests TEST_SOURCES)
+    set(TEST_SOURCES
+        tests/TaskProviderListTest.cpp
+        tests/ExecutionStreamTest.cpp
+        tests/ExecutionQueueTest.cpp
+    )
     add_executable(execq_tests ${TEST_SOURCES})
 
     # setup 3rdParty

@@ -62,6 +62,7 @@ namespace execq
             virtual Task nextTask() final;
             
         private:
+            std::unique_ptr<T> popObject();
             void waitPendingTasks();
             
         private:
@@ -94,7 +95,6 @@ template <typename T>
 execq::details::ExecutionQueue<T>::~ExecutionQueue()
 {
     m_shouldQuit = true;
-    m_taskQueueCondition.notify_all();
     waitPendingTasks();
     m_delegate.get().unregisterQueueTaskProvider(*this);
 }
@@ -121,7 +121,7 @@ execq::details::Task execq::details::ExecutionQueue<T>::nextTask()
         return Task();
     }
     
-    std::unique_ptr<T> object = PopFromQueue(m_taskQueue);
+    std::unique_ptr<T> object = popObject();
     if (!object)
     {
         return Task();
@@ -144,6 +144,20 @@ execq::details::Task execq::details::ExecutionQueue<T>::nextTask()
 }
 
 // Private
+
+template <typename T>
+std::unique_ptr<T> execq::details::ExecutionQueue<T>::popObject()
+{
+    if (m_taskQueue.empty())
+    {
+        return nullptr;
+    }
+    
+    std::unique_ptr<T> object = std::move(m_taskQueue.front());
+    m_taskQueue.pop();
+    
+    return object;
+}
 
 template <typename T>
 void execq::details::ExecutionQueue<T>::waitPendingTasks()

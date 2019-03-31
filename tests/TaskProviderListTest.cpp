@@ -49,7 +49,7 @@ TEST(ExecutionPool, TaskProvidersList_NoItems)
 {
     execq::details::TaskProviderList providers;
     
-    EXPECT_FALSE(providers.nextTask().valid());
+    EXPECT_EQ(providers.nextTask(), nullptr);
 }
 
 TEST(ExecutionPool, TaskProvidersList_SindleItem)
@@ -64,8 +64,8 @@ TEST(ExecutionPool, TaskProvidersList_SindleItem)
     .WillOnce(::testing::Return(::testing::ByMove(MakeValidTask())))
     .WillOnce(::testing::Return(::testing::ByMove(MakeValidTask())));
     
-    EXPECT_TRUE(providers.nextTask().valid());
-    EXPECT_TRUE(providers.nextTask().valid());
+    EXPECT_NE(providers.nextTask(), nullptr);
+    EXPECT_NE(providers.nextTask(), nullptr);
     
     
     // return invalid tasks
@@ -73,8 +73,8 @@ TEST(ExecutionPool, TaskProvidersList_SindleItem)
     .WillOnce(::testing::Return(::testing::ByMove(MakeInvalidTask())))
     .WillOnce(::testing::Return(::testing::ByMove(MakeInvalidTask())));
     
-    EXPECT_FALSE(providers.nextTask().valid());
-    EXPECT_FALSE(providers.nextTask().valid());
+    EXPECT_EQ(providers.nextTask(), nullptr);
+    EXPECT_EQ(providers.nextTask(), nullptr);
 }
 
 TEST(ExecutionPool, TaskProvidersList_MultipleProvidersWithValidTasks)
@@ -118,26 +118,26 @@ TEST(ExecutionPool, TaskProvidersList_MultipleProvidersWithValidTasks)
     
     // Receiving task from the first provider
     auto provider1Task = providers.nextTask();
-    ASSERT_TRUE(provider1Task.valid());
-    provider1Task();
+    ASSERT_NE(provider1Task, nullptr);
+    provider1Task->task();
     
     
     // Receiving task from the second provider
     auto provider2Task = providers.nextTask();
-    ASSERT_TRUE(provider2Task.valid());
-    provider2Task();
+    ASSERT_NE(provider2Task, nullptr);
+    provider2Task->task();
     
     
     // Receiving task from the third provider
     auto provider3Task = providers.nextTask();
-    ASSERT_TRUE(provider3Task.valid());
-    provider3Task();
+    ASSERT_NE(provider3Task, nullptr);
+    provider3Task->task();
     
     
     // Receiving task from the first provider again
     auto provider1Task2 = providers.nextTask();
-    ASSERT_TRUE(provider1Task2.valid());
-    provider1Task2();
+    ASSERT_NE(provider1Task2, nullptr);
+    provider1Task2->task();
 }
 
 TEST(ExecutionPool, TaskProvidersList_MultipleProvidersInvalidTasks)
@@ -165,7 +165,7 @@ TEST(ExecutionPool, TaskProvidersList_MultipleProvidersInvalidTasks)
     
     
     // Providers have no valid tasks, returning invalid task
-    EXPECT_FALSE(providers.nextTask().valid());
+    EXPECT_EQ(providers.nextTask(), nullptr);
 }
 
 TEST(ExecutionPool, TaskProvidersList_MultipleProviders_Valid_Invalid_Tasks)
@@ -206,16 +206,16 @@ TEST(ExecutionPool, TaskProvidersList_MultipleProviders_Valid_Invalid_Tasks)
     
     // Receiving task from the first provider
     auto provider1Task = providers.nextTask();
-    ASSERT_TRUE(provider1Task.valid());
-    provider1Task();
+    ASSERT_NE(provider1Task, nullptr);
+    provider1Task->task();
     
     
     // Skipping task from the second provider (because it has invalid task)
     // and
     // Receiving task from the third provider
     auto provider3Task = providers.nextTask();
-    ASSERT_TRUE(provider3Task.valid());
-    provider3Task();
+    ASSERT_NE(provider3Task, nullptr);
+    provider3Task->task();
 }
 
 TEST(ExecutionPool, TaskProvidersList_Add_Remove)
@@ -223,7 +223,7 @@ TEST(ExecutionPool, TaskProvidersList_Add_Remove)
     execq::details::TaskProviderList providers;
     
     // No providers - no valid tasks
-    EXPECT_FALSE(providers.nextTask().valid());
+    EXPECT_EQ(providers.nextTask(), nullptr);
     
     // Add providers
     auto provider1 = std::make_shared<MockTaskProvider>();
@@ -240,7 +240,7 @@ TEST(ExecutionPool, TaskProvidersList_Add_Remove)
     EXPECT_CALL(*provider2, nextTask())
     .WillOnce(::testing::Return(::testing::ByMove(execq::details::Task(MakeInvalidTask()))));
     
-    EXPECT_FALSE(providers.nextTask().valid());
+    EXPECT_EQ(providers.nextTask(), nullptr);
     
     
     // Provider 1 is removed, so check only provider #2
@@ -249,11 +249,11 @@ TEST(ExecutionPool, TaskProvidersList_Add_Remove)
     EXPECT_CALL(*provider2, nextTask())
     .WillOnce(::testing::Return(::testing::ByMove(execq::details::Task(MakeInvalidTask()))));
     
-    EXPECT_FALSE(providers.nextTask().valid());
+    EXPECT_EQ(providers.nextTask(), nullptr);
     
     
     // Provider 2 is removed, providers list is empty
     providers.remove(*provider2);
     
-    EXPECT_FALSE(providers.nextTask().valid());
+    EXPECT_EQ(providers.nextTask(), nullptr);
 }
