@@ -37,6 +37,11 @@ namespace
         std::this_thread::sleep_for(kLongTermJob);
     }
     
+    MATCHER_P(CompareRvalue, value, "")
+    {
+        return value == arg;
+    }
+    
     MATCHER_P(CompareWithAtomic, value, "")
     {
         return value == arg;
@@ -61,10 +66,10 @@ TEST(ExecutionPool, ExecutionQueue_SingleTask)
 {
     execq::ExecutionPool pool;
     
-    ::testing::MockFunction<void(const std::atomic_bool&, std::string)> mockExecutor;
+    ::testing::MockFunction<void(const std::atomic_bool&, std::string&&)> mockExecutor;
     auto queue = pool.createConcurrentExecutionQueue(mockExecutor.AsStdFunction());
     
-    EXPECT_CALL(mockExecutor, Call(::testing::_, "qwe"))
+    EXPECT_CALL(mockExecutor, Call(::testing::_, CompareRvalue("qwe")))
     .WillOnce(::testing::Return());
     
     queue->push("qwe");
@@ -74,11 +79,11 @@ TEST(ExecutionPool, ExecutionQueue_SingleTask_WithFuture)
 {
     execq::ExecutionPool pool;
 
-    ::testing::MockFunction<std::string(const std::atomic_bool&, std::string)> mockExecutor;
+    ::testing::MockFunction<std::string(const std::atomic_bool&, std::string&&)> mockExecutor;
     auto queue = pool.createConcurrentExecutionQueue(mockExecutor.AsStdFunction());
 
     // sleep for a some time and then return the same object
-    EXPECT_CALL(mockExecutor, Call(::testing::_, "qwe"))
+    EXPECT_CALL(mockExecutor, Call(::testing::_, CompareRvalue("qwe")))
     .WillOnce(::testing::Invoke([] (const std::atomic_bool& shouldQuit, std::string s) {
         WaitForLongTermJob();
         return s;
@@ -93,7 +98,7 @@ TEST(ExecutionPool, ExecutionQueue_MultipleTasks)
 {
     execq::ExecutionPool pool;
     
-    ::testing::MockFunction<void(const std::atomic_bool&, uint32_t)> mockExecutor;
+    ::testing::MockFunction<void(const std::atomic_bool&, uint32_t&&)> mockExecutor;
     auto queue = pool.createConcurrentExecutionQueue(mockExecutor.AsStdFunction());
     
     const size_t count = 1000;
@@ -113,7 +118,7 @@ TEST(ExecutionPool, ExecutionQueue_TaskExecutionWhenQueueDestroyed)
     ::testing::MockFunction<void(const std::atomic_bool&, std::string)> mockExecutor;
     std::promise<std::pair<bool, std::string>> isExecutedPromise;
     auto isExecuted = isExecutedPromise.get_future();
-    auto queue = pool.createConcurrentExecutionQueue<std::string, void>([&isExecutedPromise] (const std::atomic_bool& shouldQuit, std::string object) {
+    auto queue = pool.createConcurrentExecutionQueue<std::string, void>([&isExecutedPromise] (const std::atomic_bool& shouldQuit, std::string&& object) {
         // wait for double time comparing to time waiting before reset
         WaitForLongTermJob();
         WaitForLongTermJob();
@@ -140,7 +145,7 @@ TEST(ExecutionPool, ExecutionQueue_Delegate)
     EXPECT_CALL(delegate, registerQueueTaskProvider(SaveArgAddress(&registeredProvider)))
     .WillOnce(::testing::Return());
     
-    ::testing::MockFunction<void(const std::atomic_bool&, std::string)> mockExecutor;
+    ::testing::MockFunction<void(const std::atomic_bool&, std::string&&)> mockExecutor;
     execq::details::ExecutionQueue<std::string, void> queue(false, delegate, mockExecutor.AsStdFunction());
     
     ASSERT_NE(registeredProvider, nullptr);
@@ -148,7 +153,7 @@ TEST(ExecutionPool, ExecutionQueue_Delegate)
     EXPECT_CALL(delegate, queueDidReceiveNewTask())
     .WillOnce(::testing::Return());
     
-    EXPECT_CALL(mockExecutor, Call(CompareWithAtomic(false), "qwe"))
+    EXPECT_CALL(mockExecutor, Call(CompareWithAtomic(false), CompareRvalue("qwe")))
     .WillOnce(::testing::Return());
     
     queue.push("qwe");
@@ -170,7 +175,7 @@ TEST(ExecutionPool, ExecutionQueue_Serial)
     EXPECT_CALL(delegate, registerQueueTaskProvider(SaveArgAddress(&serialProvider)))
     .WillOnce(::testing::Return());
     
-    ::testing::MockFunction<void(const std::atomic_bool&, std::string)> mockExecutor;
+    ::testing::MockFunction<void(const std::atomic_bool&, std::string&&)> mockExecutor;
     execq::details::ExecutionQueue<std::string, void> queue(true, delegate, mockExecutor.AsStdFunction());
     
     ASSERT_NE(serialProvider, nullptr);

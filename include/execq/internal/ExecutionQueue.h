@@ -51,7 +51,7 @@ namespace execq
         class ExecutionQueue: public IExecutionQueue<R(T)>, private ITaskProvider
         {
         public:
-            ExecutionQueue(const bool serial, IExecutionQueueDelegate& delegate, std::function<R(const std::atomic_bool& shouldQuit, T object)> executor);
+            ExecutionQueue(const bool serial, IExecutionQueueDelegate& delegate, std::function<R(const std::atomic_bool& shouldQuit, T&& object)> executor);
             ~ExecutionQueue();
             
         private: // IExecutionQueue
@@ -79,14 +79,14 @@ namespace execq
             
             const bool m_isSerial;
             std::reference_wrapper<IExecutionQueueDelegate> m_delegate;
-            std::function<R(const std::atomic_bool& shouldQuit, T object)> m_executor;
+            std::function<R(const std::atomic_bool& shouldQuit, T&& object)> m_executor;
         };
     }
 }
 
 template <typename T, typename R>
 execq::details::ExecutionQueue<T, R>::ExecutionQueue(const bool serial, IExecutionQueueDelegate& delegate,
-                                                     std::function<R(const std::atomic_bool& shouldQuit, T object)> executor)
+                                                     std::function<R(const std::atomic_bool& shouldQuit, T&& object)> executor)
 : m_isSerial(serial)
 , m_delegate(delegate)
 , m_executor(std::move(executor))

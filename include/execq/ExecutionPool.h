@@ -55,7 +55,7 @@ namespace execq
          * @discussion Tasks in the queue run concurrently on available threads.
          */
         template <typename T, typename R>
-        std::unique_ptr<IExecutionQueue<R(T)>> createConcurrentExecutionQueue(std::function<R(const std::atomic_bool& shouldQuit, T object)> executor);
+        std::unique_ptr<IExecutionQueue<R(T)>> createConcurrentExecutionQueue(std::function<R(const std::atomic_bool& shouldQuit, T&& object)> executor);
         
         /**
          * @brief Creates execution queue with specific processing function.
@@ -63,7 +63,7 @@ namespace execq
          * @discussion Tasks in the queue run in serial (one-by-one) order.
          */
         template <typename T, typename R>
-        std::unique_ptr<IExecutionQueue<R(T)>> createSerialExecutionQueue(std::function<R(const std::atomic_bool& shouldQuit, T object)> executor);
+        std::unique_ptr<IExecutionQueue<R(T)>> createSerialExecutionQueue(std::function<R(const std::atomic_bool& shouldQuit, T&& object)> executor);
         
         /**
          * @brief Creates execution stream with specific executee function. Stream is stopped by default.
@@ -106,13 +106,13 @@ namespace execq
 }
 
 template <typename T, typename R>
-std::unique_ptr<execq::IExecutionQueue<R(T)>> execq::ExecutionPool::createConcurrentExecutionQueue(std::function<R(const std::atomic_bool& shouldQuit, T object)> executor)
+std::unique_ptr<execq::IExecutionQueue<R(T)>> execq::ExecutionPool::createConcurrentExecutionQueue(std::function<R(const std::atomic_bool& shouldQuit, T&& object)> executor)
 {
     return std::unique_ptr<details::ExecutionQueue<T, R>>(new details::ExecutionQueue<T, R>(false, *this, std::move(executor)));
 }
 
 template <typename T, typename R>
-std::unique_ptr<execq::IExecutionQueue<R(T)>> execq::ExecutionPool::createSerialExecutionQueue(std::function<R(const std::atomic_bool& shouldQuit, T object)> executor)
+std::unique_ptr<execq::IExecutionQueue<R(T)>> execq::ExecutionPool::createSerialExecutionQueue(std::function<R(const std::atomic_bool& shouldQuit, T&& object)> executor)
 {
     return std::unique_ptr<details::ExecutionQueue<T, R>>(new details::ExecutionQueue<T, R>(true, *this, std::move(executor)));
 }
