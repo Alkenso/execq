@@ -207,3 +207,45 @@ TEST(ExecutionPool, ExecutionQueue_Serial)
     EXPECT_TRUE(task2.valid());
     task2();
 }
+
+TEST(ExecutionPool, ExecutionQueue_Cancelability)
+{
+    MockExecutionQueueDelegate delegate;
+    
+    //  Queue must call 'register' method when created and 'unregister' method when destroyed.
+    execq::details::ITaskProvider* provider = nullptr;
+    EXPECT_CALL(delegate, registerQueueTaskProvider(SaveArgAddress(&provider)))
+    .WillOnce(::testing::Return());
+    
+    ::testing::MockFunction<void(const std::atomic_bool&, std::string&&)> mockExecutor;
+    execq::details::ExecutionQueue<std::string, void> queue(false, delegate, mockExecutor.AsStdFunction());
+    
+    ASSERT_NE(provider, nullptr);
+    
+    // setup other mock calls for test correctness
+    EXPECT_CALL(delegate, queueDidReceiveNewTask())
+    .WillRepeatedly(::testing::Return());
+    
+    EXPECT_CALL(delegate, unregisterQueueTaskProvider(::testing::_))
+    .WillOnce(::testing::Return());
+    
+    
+    queue.push("qwe1");
+    queue.cancel();
+    queue.push("qwe2");
+    
+    
+    execq::details::Task task1 = provider->nextTask();
+    ASSERT_TRUE(task1.valid());
+    
+    EXPECT_CALL(mockExecutor, Call(CompareWithAtomic(true), CompareRvalue("qwe1")))
+    .WillOnce(::testing::Return());
+    task1();
+    
+    execq::details::Task task2 = provider->nextTask();
+    ASSERT_TRUE(task2.valid());
+    
+    EXPECT_CALL(mockExecutor, Call(CompareWithAtomic(false), CompareRvalue("qwe2")))
+    .WillOnce(::testing::Return());
+    task2();
+}

@@ -28,6 +28,17 @@
 
 namespace execq
 {
+    /**
+     * @class IExecutionStream
+     * @brief High-level interface that provides access to stream-based tasks execution.
+     *
+     * @discussion ExecutionStream executes tasks simultaneously in the most efficient way
+     * on all available Pool threads every time the thread lacks of work.
+     *
+     * @discussion Stream could be used when number of tasks is unknown.
+     * It could be such cases like filesystem traverse: number of files is not determined, but you want to process
+     * all of them in the most efficient way.
+     */
     class IExecutionStream
     {
     public:

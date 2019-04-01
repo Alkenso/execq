@@ -49,17 +49,25 @@ namespace execq
         };
         
         template <typename T, typename R>
+        struct QueuedObject
+        {
+            std::unique_ptr<T> object;
+            std::promise<R> promise;
+            CancelToken cancelToken;
+        };
+        
+        template <typename T, typename R>
         class ExecutionQueue: public IExecutionQueue<R(T)>, private ITaskProvider
         {
         public:
-            ExecutionQueue(const bool serial, IExecutionQueueDelegate& delegate, std::function<R(const std::atomic_bool& shouldQuit, T&& object)> executor);
+            ExecutionQueue(const bool serial, IExecutionQueueDelegate& delegate, std::function<R(const std::atomic_bool& isCanceled, T&& object)> executor);
             ~ExecutionQueue();
             
         public: // IExecutionQueue
             virtual void cancel() final;
             
         private: // IExecutionQueue
-            virtual void pushImpl(std::unique_ptr<QueuedObject<T, R>> object) final;
+            virtual std::future<R> pushImpl(std::unique_ptr<T> object) final;
             
         private: // ITaskProvider
             virtual Task nextTask() final;
@@ -82,7 +90,7 @@ namespace execq
             
             const bool m_isSerial;
             std::reference_wrapper<IExecutionQueueDelegate> m_delegate;
-            std::function<R(const std::atomic_bool& shouldQuit, T&& object)> m_executor;
+            std::function<R(const std::atomic_bool& isCanceled, T&& object)> m_executor;
         };
     }
 }
@@ -114,12 +122,20 @@ void execq::details::ExecutionQueue<T, R>::cancel()
 }
 
 template <typename T, typename R>
-void execq::details::ExecutionQueue<T, R>::pushImpl(std::unique_ptr<QueuedObject<T, R>> object)
+std::future<R> execq::details::ExecutionQueue<T, R>::pushImpl(std::unique_ptr<T> object)
 {
-    std::lock_guard<std::mutex> lock(m_taskQueueMutex);
+    using QueuedObject = details::QueuedObject<T, R>;
     
-    m_taskQueue.push(std::move(object));
+    std::promise<R> promise;
+    std::future<R> future = promise.get_future();
+    
+    std::unique_ptr<QueuedObject> queuedObject(new QueuedObject { std::move(object), std::move(promise), m_cancelTokenProvider.token() });
+    
+    std::lock_guard<std::mutex> lock(m_taskQueueMutex);
+    m_taskQueue.push(std::move(queuedObject));
     m_delegate.get().queueDidReceiveNewTask();
+    
+    return future;
 }
 
 // ITaskProvider
@@ -143,9 +159,8 @@ execq::details::Task execq::details::ExecutionQueue<T, R>::nextTask()
     
     
     std::shared_ptr<QueuedObject<T, R>> sharedObject = std::move(object);
-    CancelToken cancelToken = m_cancelTokenProvider.token();
-    return Task([this, sharedObject, cancelToken] {
-        execute(std::move(sharedObject->object), sharedObject->promise, *cancelToken);
+    return Task([this, sharedObject] {
+        execute(std::move(*sharedObject->object), sharedObject->promise, *sharedObject->cancelToken);
         
         std::lock_guard<std::mutex> lock(m_taskQueueMutex);
         m_tasksRunningCount--;

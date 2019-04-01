@@ -24,7 +24,7 @@
 
 #include "ExecutionStream.h"
 
-execq::details::ExecutionStream::ExecutionStream(IExecutionStreamDelegate& delegate, std::function<void(const std::atomic_bool& shouldQuit)> executee)
+execq::details::ExecutionStream::ExecutionStream(IExecutionStreamDelegate& delegate, std::function<void(const std::atomic_bool& isCanceled)> executee)
 : m_delegate(delegate)
 , m_executee(std::move(executee))
 {

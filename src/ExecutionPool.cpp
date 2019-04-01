@@ -77,7 +77,7 @@ void execq::ExecutionPool::queueDidReceiveNewTask()
 
 // Execution Stream
 
-std::unique_ptr<execq::IExecutionStream> execq::ExecutionPool::createExecutionStream(std::function<void(const std::atomic_bool& shouldQuit)> executee)
+std::unique_ptr<execq::IExecutionStream> execq::ExecutionPool::createExecutionStream(std::function<void(const std::atomic_bool& isCanceled)> executee)
 {
     return std::unique_ptr<details::ExecutionStream>(new details::ExecutionStream(*this, std::move(executee)));
 }
@@ -120,6 +120,7 @@ void execq::ExecutionPool::unregisterTaskProvider(const details::ITaskProvider& 
     m_additionalWorkers.erase(&taskProvider);
 }
 
+/// Traverse thread workers and try to start the task on an of them
 bool execq::ExecutionPool::startTask(details::Task&& task)
 {
     for (const auto& worker : m_workers)
@@ -133,40 +134,60 @@ bool execq::ExecutionPool::startTask(details::Task&& task)
     return false;
 }
 
+/// Traverse pending tasks list and try to start them. If started, the task is removed from the list
+void execq::ExecutionPool::retryPendingTasks(PendingTask_lt& pendingTasks)
+{
+    auto it = pendingTasks.begin();
+    while (it != pendingTasks.end())
+    {
+        if (startTask(std::move(it->first)) || it->second->startTask(std::move(it->first)))
+        {
+            it = pendingTasks.erase(it);
+        }
+        else
+        {
+            it++;
+        }
+    }
+}
+
+/// Try to start the task either on Pool threads or on provider-associated thread. If fails, put the task into pending list.
+bool execq::ExecutionPool::scheduleTask(PendingTask_lt& pendingTasks, details::StoredTask&& storedTask)
+{
+    if (startTask(std::move(storedTask.task)))
+    {
+        return true;
+    }
+    
+    const auto providerWorker = m_additionalWorkers[&storedTask.associatedProvider];
+    if (!providerWorker)
+    {
+        return false;
+    }
+    
+    if (providerWorker->startTask(std::move(storedTask.task)))
+    {
+        return true;
+    }
+    
+    pendingTasks.emplace_back(std::move(storedTask.task), providerWorker);
+    
+    return false;
+}
+
 void execq::ExecutionPool::schedulerThread()
 {
-    std::list<std::pair<details::Task, std::shared_ptr<details::ThreadWorker>>> pendingTasks;
+    PendingTask_lt pendingTasks;
     while (true)
     {
-        auto it = pendingTasks.begin();
-        while (it != pendingTasks.end())
-        {
-            if (startTask(std::move(it->first)) || it->second->startTask(std::move(it->first)))
-            {
-                it = pendingTasks.erase(it);
-            }
-            else
-            {
-                it++;
-            }
-        }
+        retryPendingTasks(pendingTasks);
         
         std::unique_lock<std::mutex> lock(m_providersMutex);
+        
         std::unique_ptr<details::StoredTask> storedTask = m_taskProviders.nextTask();
-        if (storedTask)
+        if (storedTask && scheduleTask(pendingTasks, std::move(*storedTask)))
         {
-            if (startTask(std::move(storedTask->task)))
-            {
-                continue;
-            }
-            
-            const auto providerWorker = m_additionalWorkers[&storedTask->associatedProvider];
-            if (!providerWorker || providerWorker->startTask(std::move(storedTask->task)))
-            {
-                continue;
-            }
-            
-            pendingTasks.emplace_back(std::move(storedTask->task), providerWorker);
+            continue;
         }
         else if (m_shouldQuit) // all tasks have been processed
         {

@@ -50,7 +50,7 @@ namespace execq
         class ExecutionStream: public IExecutionStream, private ITaskProvider
         {
         public:
-            ExecutionStream(IExecutionStreamDelegate& delegate, std::function<void(const std::atomic_bool& shouldQuit)> executee);
+            ExecutionStream(IExecutionStreamDelegate& delegate, std::function<void(const std::atomic_bool& isCanceled)> executee);
             ~ExecutionStream();
             
         public: // IExecutionStream

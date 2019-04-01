@@ -30,6 +30,7 @@
 #include "execq/internal/ThreadWorker.h"
 
 #include <map>
+#include <list>
 #include <vector>
 #include <memory>
 
@@ -37,7 +38,8 @@ namespace execq
 {
     /**
      * @class ExecutionPool
-     * @brief ThreadPool-like object that provides concurrent task execution. Tasks are provided by 'ExecutionQueue' instances.
+     * @brief ThreadPool-like object that provides concurrent task execution.
+     * Tasks are provided by 'IExecutionQueue' ot 'IExecutionStream' instances.
      */
     class ExecutionPool: private details::IExecutionQueueDelegate, private details::IExecutionStreamDelegate, private details::IThreadWorkerDelegate
     {
@@ -55,21 +57,21 @@ namespace execq
          * @discussion Tasks in the queue run concurrently on available threads.
          */
         template <typename T, typename R>
-        std::unique_ptr<IExecutionQueue<R(T)>> createConcurrentExecutionQueue(std::function<R(const std::atomic_bool& shouldQuit, T&& object)> executor);
+        std::unique_ptr<IExecutionQueue<R(T)>> createConcurrentExecutionQueue(std::function<R(const std::atomic_bool& isCanceled, T&& object)> executor);
         
         /**
          * @brief Creates execution queue with specific processing function.
          * @discussion All objects pushed into the queue will be processed on either one of pool threads or on the queue-specific thread.
-         * @discussion Tasks in the queue run in serial (one-by-one) order.
+         * @discussion Tasks in the queue run in serial (one-after-one) order.
          */
         template <typename T, typename R>
-        std::unique_ptr<IExecutionQueue<R(T)>> createSerialExecutionQueue(std::function<R(const std::atomic_bool& shouldQuit, T&& object)> executor);
+        std::unique_ptr<IExecutionQueue<R(T)>> createSerialExecutionQueue(std::function<R(const std::atomic_bool& isCanceled, T&& object)> executor);
         
         /**
          * @brief Creates execution stream with specific executee function. Stream is stopped by default.
-         * @discussion When stream started, 'executee' function will be called each time when ExecutionSource have free thread.
+         * @discussion When stream started, 'executee' function will be called each time when ExecutionPool have free thread.
          */
-        std::unique_ptr<IExecutionStream> createExecutionStream(std::function<void(const std::atomic_bool& shouldQuit)> executee);
+        std::unique_ptr<IExecutionStream> createExecutionStream(std::function<void(const std::atomic_bool& isCanceled)> executee);
         
     private: // details::IExecutionQueueDelegate
         virtual void registerQueueTaskProvider(details::ITaskProvider& taskProvider) final;
@@ -89,7 +91,10 @@ namespace execq
         void unregisterTaskProvider(const details::ITaskProvider& taskProvider);
         void shutdown();
         
+        using PendingTask_lt = std::list<std::pair<details::Task, std::shared_ptr<details::ThreadWorker>>>;
         bool startTask(details::Task&& task);
+        void retryPendingTasks(PendingTask_lt& pendingTasks);
+        bool scheduleTask(PendingTask_lt& pendingTasks, details::StoredTask&& storedTask);
         void schedulerThread();
         
     private:
@@ -106,13 +111,13 @@ namespace execq
 }
 
 template <typename T, typename R>
-std::unique_ptr<execq::IExecutionQueue<R(T)>> execq::ExecutionPool::createConcurrentExecutionQueue(std::function<R(const std::atomic_bool& shouldQuit, T&& object)> executor)
+std::unique_ptr<execq::IExecutionQueue<R(T)>> execq::ExecutionPool::createConcurrentExecutionQueue(std::function<R(const std::atomic_bool& isCanceled, T&& object)> executor)
 {
     return std::unique_ptr<details::ExecutionQueue<T, R>>(new details::ExecutionQueue<T, R>(false, *this, std::move(executor)));
 }
 
 template <typename T, typename R>
-std::unique_ptr<execq::IExecutionQueue<R(T)>> execq::ExecutionPool::createSerialExecutionQueue(std::function<R(const std::atomic_bool& shouldQuit, T&& object)> executor)
+std::unique_ptr<execq::IExecutionQueue<R(T)>> execq::ExecutionPool::createSerialExecutionQueue(std::function<R(const std::atomic_bool& isCanceled, T&& object)> executor)
 {
     return std::unique_ptr<details::ExecutionQueue<T, R>>(new details::ExecutionQueue<T, R>(true, *this, std::move(executor)));
 }
