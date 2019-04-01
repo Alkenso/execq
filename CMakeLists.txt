@@ -32,7 +32,6 @@ set(LIB_SOURCES
     src/ExecutionStream.cpp
     src/ExecutionPool.cpp
     src/CancelTokenProvider.cpp
-    src/CancelTokenProviderTest.cpp
 )
 
 add_library(execq STATIC ${LIB_SOURCES})
@@ -54,6 +53,7 @@ if (EXECQ_ENABLE_TESTING)
         tests/TaskProviderListTest.cpp
         tests/ExecutionStreamTest.cpp
         tests/ExecutionQueueTest.cpp
+        tests/CancelTokenProviderTest.cpp
     )
     add_executable(execq_tests ${TEST_SOURCES})
 
