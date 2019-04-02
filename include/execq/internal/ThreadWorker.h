@@ -37,6 +37,8 @@ namespace execq
         class IThreadWorkerDelegate
         {
         public:
+            virtual ~IThreadWorkerDelegate() = default;
+            
             virtual void workerDidFinishTask() = 0;
         };
         
