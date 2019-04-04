@@ -27,29 +27,55 @@
 #include "execq/internal/ITaskProvider.h"
 
 #include <list>
-
-namespace execq
-{
-    namespace details
-    {
-        struct StoredTask
-        {
-            Task task;
-            ITaskProvider& associatedProvider;
-        };
-        
-        class TaskProviderList
-        {
-        public:
-            void add(ITaskProvider& taskProvider);
-            void remove(const ITaskProvider& taskProvider);
-            
-            std::unique_ptr<StoredTask> nextTask();
-            
-        private:
-            using TaskProviders_lt = std::list<ITaskProvider*>;
-            TaskProviders_lt m_taskProviders;
-            TaskProviders_lt::iterator m_currentTaskProviderIt;
-        };
-    }
-}
+#include <mutex>
+//
+//namespace execq
+//{
+//    namespace details
+//    {
+//        struct StoredTask
+//        {
+//            Task task;
+//            ITaskProvider& associatedProvider;
+//        };
+//
+//        class TaskProviderList
+//        {
+//        public:
+//            void add(ITaskProvider& taskProvider);
+//            void remove(const ITaskProvider& taskProvider);
+//
+//            std::unique_ptr<StoredTask> nextTask();
+//            ITaskProvider* nextProviderWithTask();
+//
+//        private:
+//            using TaskProviders_lt = std::list<ITaskProvider*>;
+//            TaskProviders_lt m_taskProviders;
+//            TaskProviders_lt::iterator m_currentTaskProviderIt;
+//            std::mutex m_mutex;
+//        };
+//
+//
+//        class TaskProviderList2
+//        {
+//        public:
+//            void add(std::shared_ptr<ITaskProvider> taskProvider);
+//            void remove(std::shared_ptr<ITaskProvider> taskProvider);
+//
+//            void invalidate();
+//
+//            virtual bool execute() final;
+//            virtual bool valid() const final;
+//
+//        private:
+//            std::shared_ptr<ITaskProvider> nextProviderWithTask();
+//
+//        private:
+//            using TaskProviders_lt = std::list<std::shared_ptr<ITaskProvider>>;
+//            TaskProviders_lt m_taskProviders;
+//            TaskProviders_lt::iterator m_currentTaskProviderIt;
+//            std::mutex m_mutex;
+//            std::atomic_bool m_valid { true };
+//        };
+//    }
+//}

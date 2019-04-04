@@ -23,45 +23,136 @@
  */
 
 #include "TaskProviderList.h"
-
-void execq::details::TaskProviderList::add(ITaskProvider& taskProvider)
-{
-    m_taskProviders.push_back(&taskProvider);
-    m_currentTaskProviderIt = m_taskProviders.begin();
-}
-
-void execq::details::TaskProviderList::remove(const ITaskProvider& taskProvider)
-{
-    const auto it = std::find(m_taskProviders.begin(), m_taskProviders.end(), &taskProvider);
-    if (it != m_taskProviders.end())
-    {
-        m_taskProviders.erase(it);
-        m_currentTaskProviderIt = m_taskProviders.begin();
-    }
-}
-
-std::unique_ptr<execq::details::StoredTask> execq::details::TaskProviderList::nextTask()
-{
-    const size_t taskProvidersCount = m_taskProviders.size();
-    const auto listEndIt = m_taskProviders.end();
-    
-    for (size_t i = 0; i < taskProvidersCount; i++)
-    {
-        if (m_currentTaskProviderIt == listEndIt)
-        {
-            m_currentTaskProviderIt = m_taskProviders.begin();
-        }
-        
-        ITaskProvider* provider = *m_currentTaskProviderIt;
-        Task task = provider->nextTask();
-        
-        m_currentTaskProviderIt++;
-        
-        if (task.valid())
-        {
-            return std::unique_ptr<StoredTask>(new StoredTask { std::move(task), *provider });
-        }
-    }
-    
-    return nullptr;
-}
+//
+//void execq::details::TaskProviderList::add(ITaskProvider& taskProvider)
+//{
+//    std::lock_guard<std::mutex> lock(m_mutex);
+//    m_taskProviders.push_back(&taskProvider);
+//    m_currentTaskProviderIt = m_taskProviders.begin();
+//}
+//
+//void execq::details::TaskProviderList::remove(const ITaskProvider& taskProvider)
+//{
+//    std::lock_guard<std::mutex> lock(m_mutex);
+//    const auto it = std::find(m_taskProviders.begin(), m_taskProviders.end(), &taskProvider);
+//    if (it != m_taskProviders.end())
+//    {
+//        m_taskProviders.erase(it);
+//        m_currentTaskProviderIt = m_taskProviders.begin();
+//    }
+//}
+//
+//std::unique_ptr<execq::details::StoredTask> execq::details::TaskProviderList::nextTask()
+//{
+//    const size_t taskProvidersCount = m_taskProviders.size();
+//    const auto listEndIt = m_taskProviders.end();
+//
+//    for (size_t i = 0; i < taskProvidersCount; i++)
+//    {
+//        if (m_currentTaskProviderIt == listEndIt)
+//        {
+//            m_currentTaskProviderIt = m_taskProviders.begin();
+//        }
+//
+//        ITaskProvider* provider = *m_currentTaskProviderIt;
+//        Task task = provider->nextTask();
+//
+//        m_currentTaskProviderIt++;
+//
+//        if (task.valid())
+//        {
+//            return std::unique_ptr<StoredTask>(new StoredTask { std::move(task), *provider });
+//        }
+//    }
+//
+//    return nullptr;
+//}
+//
+//execq::details::ITaskProvider* execq::details::TaskProviderList::nextProviderWithTask()
+//{
+//    std::lock_guard<std::mutex> lock(m_mutex);
+//
+//    const size_t taskProvidersCount = m_taskProviders.size();
+//    const auto listEndIt = m_taskProviders.end();
+//
+//    for (size_t i = 0; i < taskProvidersCount; i++)
+//    {
+//        if (m_currentTaskProviderIt == listEndIt)
+//        {
+//            m_currentTaskProviderIt = m_taskProviders.begin();
+//        }
+//
+//        ITaskProvider* provider = *(m_currentTaskProviderIt++);
+//        if (provider->hasTask())
+//        {
+//            return provider;
+//        }
+//    }
+//
+//    return nullptr;
+//}
+//
+//
+//
+//void execq::details::TaskProviderList2::add(std::shared_ptr<ITaskProvider> taskProvider)
+//{
+//    std::lock_guard<std::mutex> lock(m_mutex);
+//    m_taskProviders.push_back(&taskProvider);
+//    m_currentTaskProviderIt = m_taskProviders.begin();
+//}
+//
+//void execq::details::TaskProviderList2::remove(std::shared_ptr<ITaskProvider> taskProvider)
+//{
+//    std::lock_guard<std::mutex> lock(m_mutex);
+//    const auto it = std::find(m_taskProviders.begin(), m_taskProviders.end(), &taskProvider);
+//    if (it != m_taskProviders.end())
+//    {
+//        m_taskProviders.erase(it);
+//        m_currentTaskProviderIt = m_taskProviders.begin();
+//    }
+//}
+//
+//std::shared_ptr<execq::details::ITaskProvider> execq::details::TaskProviderList2::nextProviderWithTask()
+//{
+//    std::lock_guard<std::mutex> lock(m_mutex);
+//
+//    const size_t taskProvidersCount = m_taskProviders.size();
+//    const auto listEndIt = m_taskProviders.end();
+//
+//    for (size_t i = 0; i < taskProvidersCount; i++)
+//    {
+//        if (m_currentTaskProviderIt == listEndIt)
+//        {
+//            m_currentTaskProviderIt = m_taskProviders.begin();
+//        }
+//
+//        auto provider = *(m_currentTaskProviderIt++);
+//        if (provider->hasTask())
+//        {
+//            return provider;
+//        }
+//    }
+//
+//    return nullptr;
+//}
+//
+//void execq::details::TaskProviderList2::invalidate()
+//{
+//    m_valid = false;
+//}
+//
+//bool execq::details::TaskProviderList2::execute()
+//{
+//    const std::shared_ptr<ITaskProvider>& provider = nextProviderWithTask();
+//    if (provider)
+//    {
+//        return provider->execute();
+//    }
+//
+//    return false;
+//}
+//
+//bool execq::details::TaskProviderList2::valid() const
+//{
+//    return m_valid;
+//}

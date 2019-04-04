@@ -24,8 +24,8 @@
 
 #include "ThreadWorker.h"
 
-execq::details::ThreadWorker::ThreadWorker(IThreadWorkerDelegate& delegate)
-: m_delegate(delegate)
+execq::details::ThreadWorker::ThreadWorker(IThreadWorkerTaskProvider& provider)
+: m_provider(provider)
 {}
 
 execq::details::ThreadWorker::~ThreadWorker()
@@ -37,10 +37,9 @@ execq::details::ThreadWorker::~ThreadWorker()
     }
 }
 
-bool execq::details::ThreadWorker::startTask(details::Task&& task)
+bool execq::details::ThreadWorker::startTask()
 {
-    const bool alreadyBusy = m_busy.exchange(true);
-    if (alreadyBusy)
+    if (m_isWorking.test_and_set())
     {
         return false;
     }
@@ -50,8 +49,6 @@ bool execq::details::ThreadWorker::startTask(details::Task&& task)
         m_thread = std::thread(&ThreadWorker::threadMain, this);
     }
     
-    std::lock_guard<std::mutex> lock(m_mutex);
-    m_task = std::move(task);
     m_condition.notify_one();
     
     return true;
@@ -64,47 +61,111 @@ void execq::details::ThreadWorker::shutdown()
     m_condition.notify_one();
 }
 
-execq::details::Task execq::details::ThreadWorker::waitTask(bool& shouldQuit)
+void execq::details::ThreadWorker::threadMain()
 {
-    while (true)
+    while (!m_shouldQuit)
     {
         std::unique_lock<std::mutex> lock(m_mutex);
-        if (m_task.valid())
+        
+        if (m_shouldQuit)
         {
-            Task task = std::move(m_task);
-            m_task = Task();
-            
-            return task;
-        }
-        else if (m_shouldQuit)
-        {
-            shouldQuit = true;
             break;
         }
         
-        m_condition.wait(lock);
-    }
-    
-    return Task();
-}
-
-void execq::details::ThreadWorker::threadMain()
-{
-    while (true)
-    {
-        bool shouldQuit = false;
-        Task task = waitTask(shouldQuit);
-        if (task.valid())
+        if (m_provider.execute())
         {
-            task();
-            
-            m_busy = false;
-            m_delegate.workerDidFinishTask();
+            continue;
         }
-        else if (shouldQuit)
+        
+        if (m_shouldQuit)
         {
             break;
         }
+        
+        m_isWorking.clear();
+        m_condition.wait(lock);
+        m_isWorking.test_and_set();
     }
 }
 
+
+#include "TaskProviderList.h"
+
+execq::details::ThreadWorkerPool::ThreadWorkerPool()
+{
+    const uint32_t defaultThreadCount = 4;
+    const uint32_t hardwareThreadCount = std::thread::hardware_concurrency();
+    
+    const uint32_t threadCount = hardwareThreadCount ? hardwareThreadCount : defaultThreadCount;
+    for (uint32_t i = 0; i < threadCount; i++)
+    {
+        IThreadWorkerTaskProvider& provider = *this;
+        m_workers.emplace_back(new execq::details::ThreadWorker(provider));
+    }
+}
+
+void execq::details::ThreadWorkerPool::addProvider(IThreadWorkerPoolTaskProvider& provider)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_taskProviders.push_back(&provider);
+    m_currentTaskProviderIt = m_taskProviders.begin();
+}
+
+void execq::details::ThreadWorkerPool::removeProvider(IThreadWorkerPoolTaskProvider& provider)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    const auto it = std::find(m_taskProviders.begin(), m_taskProviders.end(), &provider);
+    if (it != m_taskProviders.end())
+    {
+        m_taskProviders.erase(it);
+        m_currentTaskProviderIt = m_taskProviders.begin();
+    }
+}
+
+execq::details::IThreadWorkerPoolTaskProvider* execq::details::ThreadWorkerPool::nextProviderWithTask()
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    
+    const size_t taskProvidersCount = m_taskProviders.size();
+    const auto listEndIt = m_taskProviders.end();
+    
+    for (size_t i = 0; i < taskProvidersCount; i++)
+    {
+        if (m_currentTaskProviderIt == listEndIt)
+        {
+            m_currentTaskProviderIt = m_taskProviders.begin();
+        }
+        
+        IThreadWorkerPoolTaskProvider* provider = *(m_currentTaskProviderIt++);
+        if (provider->hasTask())
+        {
+            return provider;
+        }
+    }
+    
+    return nullptr;
+}
+
+bool execq::details::ThreadWorkerPool::startTask()
+{
+    for (const auto& worker : m_workers)
+    {
+        if (worker->startTask())
+        {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+bool execq::details::ThreadWorkerPool::execute()
+{
+    IThreadWorkerPoolTaskProvider *const provider = nextProviderWithTask();
+    if (provider)
+    {
+        return provider->execute();
+    }
+    
+    return false;
+}

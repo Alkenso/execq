@@ -28,43 +28,78 @@
 
 #include <atomic>
 #include <thread>
+#include <vector>
+#include <list>
 #include <condition_variable>
 
 namespace execq
 {
     namespace details
     {
-        class IThreadWorkerDelegate
+        class IThreadWorkerTaskProvider
         {
         public:
-            virtual ~IThreadWorkerDelegate() = default;
+            virtual ~IThreadWorkerTaskProvider() = default;
             
-            virtual void workerDidFinishTask() = 0;
+            virtual bool execute() = 0;
         };
+        
         
         class ThreadWorker
         {
         public:
-            explicit ThreadWorker(IThreadWorkerDelegate& delegate);
+            explicit ThreadWorker(IThreadWorkerTaskProvider& provider);
             ~ThreadWorker();
             
-            bool startTask(details::Task&& task);
+            bool startTask();
             
         private:
-            void shutdown();
-            Task waitTask(bool& shouldQuit);
             void threadMain();
+            void shutdown();
             
         private:
-            bool m_shouldQuit = false;
-            std::atomic_bool m_busy { false };
+            std::atomic_bool m_shouldQuit { false };
+            std::atomic_flag m_isWorking = ATOMIC_FLAG_INIT;
             std::condition_variable m_condition;
             std::mutex m_mutex;
             std::thread m_thread;
             
-            details::Task m_task;
+            IThreadWorkerTaskProvider& m_provider;
+        };
+        
+        class IThreadWorkerPoolTaskProvider: public IThreadWorkerTaskProvider
+        {
+        public:
+            virtual bool hasTask() const = 0;
+        };
+        
+        
+        
+        
+        
+        class ThreadWorkerPool: private IThreadWorkerTaskProvider
+        {
+        public:
+            ThreadWorkerPool();
+            void addProvider(IThreadWorkerPoolTaskProvider& provider);
+            void removeProvider(IThreadWorkerPoolTaskProvider& provider);
             
-            IThreadWorkerDelegate& m_delegate;
+            bool startTask();
+            
+            
+        private:
+            virtual bool execute() final;
+            
+            IThreadWorkerPoolTaskProvider* nextProviderWithTask();
+            
+        private:
+            std::vector<std::unique_ptr<ThreadWorker>> m_workers;
+            
+            using TaskProviders_lt = std::list<IThreadWorkerPoolTaskProvider*>;
+            TaskProviders_lt m_taskProviders;
+            TaskProviders_lt::iterator m_currentTaskProviderIt;
+            std::mutex m_mutex;
+            std::atomic_bool m_valid { true };
         };
     }
 }

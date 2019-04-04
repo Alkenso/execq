@@ -26,18 +26,22 @@
 
 #include <future>
 
-namespace execq
-{
-    namespace details
-    {
-        using Task = std::packaged_task<void()>;
-        
-        class ITaskProvider
-        {
-        public:
-            virtual ~ITaskProvider() = default;
-            
-            virtual Task nextTask() = 0;
-        };
-    }
-}
+//namespace execq
+//{
+//    namespace details
+//    {
+//        using Task = std::packaged_task<void()>;
+//        
+//        class ITaskProvider
+//        {
+//        public:
+//            virtual ~ITaskProvider() = default;
+//            
+//            virtual Task nextTask() = 0;
+//            
+//            virtual bool execute() = 0;
+//            virtual bool hasTask() const = 0;
+//            virtual bool valid() const = 0;
+//        };
+//    }
+//}

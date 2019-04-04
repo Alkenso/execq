@@ -24,176 +24,163 @@
 
 #include "ExecutionPool.h"
 
-namespace
-{
-    std::unique_ptr<execq::details::ThreadWorker> CreateWorker(execq::details::IThreadWorkerDelegate& delegate)
-    {
-        return std::unique_ptr<execq::details::ThreadWorker>(new execq::details::ThreadWorker(delegate));
-    }
-}
+//namespace
+//{
+//    std::unique_ptr<execq::details::ThreadWorker> CreateWorker(std::shared_ptr<execq::details::IThreadWorkerTaskProvider> provider)
+//    {
+//        return std::unique_ptr<execq::details::ThreadWorker>(new execq::details::ThreadWorker(provider));
+//    }
+//}
 
 execq::ExecutionPool::ExecutionPool()
-: m_schedulerThread(&ExecutionPool::schedulerThread, this)
+//: m_schedulerThread(&ExecutionPool::schedulerThread, this)
+: m_workerPool(std::make_shared<details::ThreadWorkerPool>())
 {
-    const uint32_t defaultThreadCount = 4;
-    const uint32_t hardwareThreadCount = std::thread::hardware_concurrency();
-    
-    const uint32_t threadCount = hardwareThreadCount ? hardwareThreadCount : defaultThreadCount;
-    for (uint32_t i = 0; i < threadCount; i++)
-    {
-        m_workers.emplace_back(CreateWorker(*this));
-    }
+//    auto list = std::make_shared<details::TaskProviderList2>();
+//
+//    const uint32_t defaultThreadCount = 4;
+//    const uint32_t hardwareThreadCount = std::thread::hardware_concurrency();
+//
+//    const uint32_t threadCount = hardwareThreadCount ? hardwareThreadCount : defaultThreadCount;
+//    for (uint32_t i = 0; i < threadCount; i++)
+//    {
+//        m_workers.emplace_back(new execq::details::ThreadWorker(list));
+//    }
 }
 
-execq::ExecutionPool::~ExecutionPool()
-{
-    shutdown();
-    m_schedulerThread.join();
-}
+//execq::ExecutionPool::~ExecutionPool()
+//{
+//    shutdown();
+//    for (const auto& worker : m_workers)
+//    {
+//        worker->shutdown();
+//    }
+//}
 
-void execq::ExecutionPool::shutdown()
-{
-    std::lock_guard<std::mutex> lock(m_providersMutex);
-    m_shouldQuit = true;
-    m_providersCondition.notify_all();
-}
+//void execq::ExecutionPool::shutdown()
+//{
+//    std::lock_guard<std::mutex> lock(m_providersMutex);
+//    m_shouldQuit = true;
+////    m_providersCondition.notify_all();
+//}
 
 // Execution Queue
 
-void execq::ExecutionPool::registerQueueTaskProvider(details::ITaskProvider& taskProvider)
-{
-    registerTaskProvider(taskProvider);
-}
+//void execq::ExecutionPool::registerQueueTaskProvider(details::ITaskProvider& taskProvider)
+//{
+//    registerTaskProvider(taskProvider);
+//}
+//
+//void execq::ExecutionPool::unregisterQueueTaskProvider(const details::ITaskProvider& taskProvider)
+//{
+//    unregisterTaskProvider(taskProvider);
+//}
+//
+//void execq::ExecutionPool::queueDidReceiveNewTask()
+//{
+//    if (startTask())
+//    {
+//        return;
+//    }
+//
+//    m_additionalWorkers[&taskProvider]->startTask();
+//
+//    m_additionalWorkers
+    
+    //  try start on every pool thread
+    //  if not started
+    //      try start on per-provider thread
+    //  endif
+//
+//    m_providersCondition.notify_one();
+//}
 
-void execq::ExecutionPool::unregisterQueueTaskProvider(const details::ITaskProvider& taskProvider)
-{
-    unregisterTaskProvider(taskProvider);
-}
+//bool execq::ExecutionPool::execute()
+//{
+//    //  lock
+//    //      find next provider with task
+//    //  unlock
+//    //
+//    //  if found
+//    //      provider->execute
+//    //  endif
+//    //
+//    //  return found
+//
+//    std::unique_lock<std::mutex> lock(m_providersMutex);
+//    details::ITaskProvider* provider = m_taskProviders.nextProviderWithTask();
+//    if (!provider)
+//    {
+//        return false;
+//    }
+//
+//    lock.unlock();
+//
+//    provider->execute();
+//
+//    return true;
+//}
 
-void execq::ExecutionPool::queueDidReceiveNewTask()
-{
-    m_providersCondition.notify_one();
-}
+//bool execq::ExecutionPool::valid() const
+//{
+//    return !m_shouldQuit;
+//}
 
 // Execution Stream
 
-std::unique_ptr<execq::IExecutionStream> execq::ExecutionPool::createExecutionStream(std::function<void(const std::atomic_bool& isCanceled)> executee)
-{
-    return std::unique_ptr<details::ExecutionStream>(new details::ExecutionStream(*this, std::move(executee)));
-}
+//std::unique_ptr<execq::IExecutionStream> execq::ExecutionPool::createExecutionStream(std::function<void(const std::atomic_bool& isCanceled)> executee)
+//{
+//    return nullptr;//std::unique_ptr<details::ExecutionStream>(new details::ExecutionStream(*this, std::move(executee)));
+//}
+//
+//void execq::ExecutionPool::registerStreamTaskProvider(details::ITaskProvider& taskProvider)
+//{
+//    registerTaskProvider(taskProvider);
+//}
+//
+//void execq::ExecutionPool::unregisterStreamTaskProvider(const details::ITaskProvider& taskProvider)
+//{
+//    unregisterTaskProvider(taskProvider);
+//}
 
-void execq::ExecutionPool::registerStreamTaskProvider(details::ITaskProvider& taskProvider)
-{
-    registerTaskProvider(taskProvider);
-}
-
-void execq::ExecutionPool::unregisterStreamTaskProvider(const details::ITaskProvider& taskProvider)
-{
-    unregisterTaskProvider(taskProvider);
-}
-
-void execq::ExecutionPool::streamDidStart()
-{
-    m_providersCondition.notify_all();
-}
-
-void execq::ExecutionPool::workerDidFinishTask()
-{
-    m_providersCondition.notify_one();
-}
+//void execq::ExecutionPool::streamDidStart()
+//{
+////    m_providersCondition.notify_all();
+//}
+//
+//void execq::ExecutionPool::workerDidFinishTask()
+//{
+////    m_providersCondition.notify_one();
+//}
 
 // Private
 
-void execq::ExecutionPool::registerTaskProvider(details::ITaskProvider& taskProvider)
-{
-    std::lock_guard<std::mutex> lock(m_providersMutex);
-    
-    m_taskProviders.add(taskProvider);
-    m_additionalWorkers.emplace(&taskProvider, CreateWorker(*this));
-}
-
-void execq::ExecutionPool::unregisterTaskProvider(const details::ITaskProvider& taskProvider)
-{
-    std::lock_guard<std::mutex> lock(m_providersMutex);
-    
-    m_taskProviders.remove(taskProvider);
-    m_additionalWorkers.erase(&taskProvider);
-}
-
-/// Traverse thread workers and try to start the task on an of them
-bool execq::ExecutionPool::startTask(details::Task&& task)
-{
-    for (const auto& worker : m_workers)
-    {
-        if (worker->startTask(std::move(task)))
-        {
-            return true;
-        }
-    }
-    
-    return false;
-}
-
-/// Traverse pending tasks list and try to start them. If started, the task is removed from the list
-void execq::ExecutionPool::retryPendingTasks(PendingTask_lt& pendingTasks)
-{
-    auto it = pendingTasks.begin();
-    while (it != pendingTasks.end())
-    {
-        if (startTask(std::move(it->first)) || it->second->startTask(std::move(it->first)))
-        {
-            it = pendingTasks.erase(it);
-        }
-        else
-        {
-            it++;
-        }
-    }
-}
-
-/// Try to start the task either on Pool threads or on provider-associated thread. If fails, put the task into pending list.
-bool execq::ExecutionPool::scheduleTask(PendingTask_lt& pendingTasks, details::StoredTask&& storedTask)
-{
-    if (startTask(std::move(storedTask.task)))
-    {
-        return true;
-    }
-    
-    const auto providerWorker = m_additionalWorkers[&storedTask.associatedProvider];
-    if (!providerWorker)
-    {
-        return false;
-    }
-    
-    if (providerWorker->startTask(std::move(storedTask.task)))
-    {
-        return true;
-    }
-    
-    pendingTasks.emplace_back(std::move(storedTask.task), providerWorker);
-    
-    return false;
-}
-
-void execq::ExecutionPool::schedulerThread()
-{
-    PendingTask_lt pendingTasks;
-    while (true)
-    {
-        retryPendingTasks(pendingTasks);
-        
-        std::unique_lock<std::mutex> lock(m_providersMutex);
-        
-        std::unique_ptr<details::StoredTask> storedTask = m_taskProviders.nextTask();
-        if (storedTask && scheduleTask(pendingTasks, std::move(*storedTask)))
-        {
-            continue;
-        }
-        else if (m_shouldQuit) // all tasks have been processed
-        {
-            break;
-        }
-    
-        m_providersCondition.wait(lock);
-    }
-}
+//void execq::ExecutionPool::registerTaskProvider(details::ITaskProvider& taskProvider)
+//{
+//    std::lock_guard<std::mutex> lock(m_providersMutex);
+//    
+//    m_taskProviders.add(taskProvider);
+//    m_additionalWorkers.emplace(&taskProvider, CreateWorker(*this));
+//}
+//
+//void execq::ExecutionPool::unregisterTaskProvider(const details::ITaskProvider& taskProvider)
+//{
+//    std::lock_guard<std::mutex> lock(m_providersMutex);
+//    
+//    m_taskProviders.remove(taskProvider);
+//    m_additionalWorkers.erase(&taskProvider);
+//}
+//
+///// Traverse thread workers and try to start the task on an of them
+//bool execq::ExecutionPool::startTask()
+//{
+//    for (const auto& worker : m_workers)
+//    {
+//        if (worker->startTask())
+//        {
+//            return true;
+//        }
+//    }
+//    
+//    return false;
+//}

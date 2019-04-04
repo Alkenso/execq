@@ -41,7 +41,7 @@ namespace execq
      * @brief ThreadPool-like object that provides concurrent task execution.
      * Tasks are provided by 'IExecutionQueue' ot 'IExecutionStream' instances.
      */
-    class ExecutionPool: private details::IExecutionQueueDelegate, private details::IExecutionStreamDelegate, private details::IThreadWorkerDelegate
+    class ExecutionPool
     {
     public:
         /**
@@ -49,7 +49,7 @@ namespace execq
          * Usually you should create single instance of ExecutionPool with multiple IExecutionQueue/IExecutionStream to achive best performance.
          */
         ExecutionPool();
-        ~ExecutionPool();
+//        ~ExecutionPool();
         
         /**
          * @brief Creates execution queue with specific processing function.
@@ -73,51 +73,51 @@ namespace execq
          */
         std::unique_ptr<IExecutionStream> createExecutionStream(std::function<void(const std::atomic_bool& isCanceled)> executee);
         
-    private: // details::IExecutionQueueDelegate
-        virtual void registerQueueTaskProvider(details::ITaskProvider& taskProvider) final;
-        virtual void unregisterQueueTaskProvider(const details::ITaskProvider& taskProvider) final;
-        virtual void queueDidReceiveNewTask() final;
+//    private: // details::IExecutionQueueDelegate
+//        virtual void registerQueueTaskProvider(details::ITaskProvider& taskProvider) final;
+//        virtual void unregisterQueueTaskProvider(const details::ITaskProvider& taskProvider) final;
+//        virtual void queueDidReceiveNewTask() final;
         
-    private: // details::IExecutionStreamDelegate
-        virtual void registerStreamTaskProvider(details::ITaskProvider& taskProvider) final;
-        virtual void unregisterStreamTaskProvider(const details::ITaskProvider& taskProvider) final;
-        virtual void streamDidStart() final;
+//    private: // details::IExecutionStreamDelegate
+//        virtual void registerStreamTaskProvider(details::ITaskProvider& taskProvider) final;
+//        virtual void unregisterStreamTaskProvider(const details::ITaskProvider& taskProvider) final;
+//        virtual void streamDidStart() final;
         
     private: // details::IThreadWorkerDelegate
-        virtual void workerDidFinishTask() final;
+//        bool execute() final;
+//        virtual bool valid() const final;
+//        virtual void workerDidFinishTask() final;
         
     private:
-        void registerTaskProvider(details::ITaskProvider& taskProvider);
-        void unregisterTaskProvider(const details::ITaskProvider& taskProvider);
-        void shutdown();
+//        void registerTaskProvider(details::ITaskProvider& taskProvider);
+//        void unregisterTaskProvider(const details::ITaskProvider& taskProvider);
+//        void shutdown();
         
-        using PendingTask_lt = std::list<std::pair<details::Task, std::shared_ptr<details::ThreadWorker>>>;
-        bool startTask(details::Task&& task);
-        void retryPendingTasks(PendingTask_lt& pendingTasks);
-        bool scheduleTask(PendingTask_lt& pendingTasks, details::StoredTask&& storedTask);
-        void schedulerThread();
+//        bool startTask();
         
     private:
-        std::atomic_bool m_shouldQuit { false };
+        std::shared_ptr<details::ThreadWorkerPool> m_workerPool;
         
-        details::TaskProviderList m_taskProviders;
-        std::mutex m_providersMutex;
-        std::condition_variable m_providersCondition;
+//        std::atomic_bool m_shouldQuit { false };
         
-        std::vector<std::unique_ptr<details::ThreadWorker>> m_workers;
-        std::map<const details::ITaskProvider*, std::shared_ptr<details::ThreadWorker>> m_additionalWorkers;
-        std::thread m_schedulerThread;
+//        details::TaskProviderList m_taskProviders;
+//        std::mutex m_providersMutex;
+//        std::condition_variable m_providersCondition;
+        
+//        std::vector<std::unique_ptr<details::ThreadWorker>> m_workers;
+//        std::map<const details::ITaskProvider*, std::shared_ptr<details::ThreadWorker>> m_additionalWorkers;
+//        std::thread m_schedulerThread;
     };
 }
 
 template <typename T, typename R>
 std::unique_ptr<execq::IExecutionQueue<R(T)>> execq::ExecutionPool::createConcurrentExecutionQueue(std::function<R(const std::atomic_bool& isCanceled, T&& object)> executor)
 {
-    return std::unique_ptr<details::ExecutionQueue<T, R>>(new details::ExecutionQueue<T, R>(false, *this, std::move(executor)));
+    return std::unique_ptr<details::ExecutionQueue<T, R>>(new details::ExecutionQueue<T, R>(false, m_workerPool, std::move(executor)));
 }
 
 template <typename T, typename R>
 std::unique_ptr<execq::IExecutionQueue<R(T)>> execq::ExecutionPool::createSerialExecutionQueue(std::function<R(const std::atomic_bool& isCanceled, T&& object)> executor)
 {
-    return std::unique_ptr<details::ExecutionQueue<T, R>>(new details::ExecutionQueue<T, R>(true, *this, std::move(executor)));
+    return std::unique_ptr<details::ExecutionQueue<T, R>>(new details::ExecutionQueue<T, R>(true, m_workerPool, std::move(executor)));
 }
