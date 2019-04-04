@@ -24,12 +24,9 @@
 
 #pragma once
 
-#include "execq/internal/ITaskProvider.h"
-
+#include <mutex>
 #include <atomic>
 #include <thread>
-#include <vector>
-#include <list>
 #include <condition_variable>
 
 namespace execq
@@ -45,13 +42,22 @@ namespace execq
         };
         
         
-        class ThreadWorker
+        class IThreadWorker
+        {
+        public:
+            virtual ~IThreadWorker() = default;
+            
+            virtual bool notifyWorker() = 0;
+        };
+        
+        
+        class ThreadWorker: public IThreadWorker
         {
         public:
             explicit ThreadWorker(IThreadWorkerTaskProvider& provider);
-            ~ThreadWorker();
+            virtual ~ThreadWorker();
             
-            bool startTask();
+            virtual bool notifyWorker() final;
             
         private:
             void threadMain();
@@ -65,41 +71,6 @@ namespace execq
             std::thread m_thread;
             
             IThreadWorkerTaskProvider& m_provider;
-        };
-        
-        class IThreadWorkerPoolTaskProvider: public IThreadWorkerTaskProvider
-        {
-        public:
-            virtual bool hasTask() const = 0;
-        };
-        
-        
-        
-        
-        
-        class ThreadWorkerPool: private IThreadWorkerTaskProvider
-        {
-        public:
-            ThreadWorkerPool();
-            void addProvider(IThreadWorkerPoolTaskProvider& provider);
-            void removeProvider(IThreadWorkerPoolTaskProvider& provider);
-            
-            bool startTask();
-            
-            
-        private:
-            virtual bool execute() final;
-            
-            IThreadWorkerPoolTaskProvider* nextProviderWithTask();
-            
-        private:
-            std::vector<std::unique_ptr<ThreadWorker>> m_workers;
-            
-            using TaskProviders_lt = std::list<IThreadWorkerPoolTaskProvider*>;
-            TaskProviders_lt m_taskProviders;
-            TaskProviders_lt::iterator m_currentTaskProviderIt;
-            std::mutex m_mutex;
-            std::atomic_bool m_valid { true };
         };
     }
 }

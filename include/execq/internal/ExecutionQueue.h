@@ -25,15 +25,10 @@
 #pragma once
 
 #include "execq/IExecutionQueue.h"
-#include "execq/internal/ITaskProvider.h"
 #include "execq/internal/CancelTokenProvider.h"
-#include "execq/internal/ThreadWorker.h"
+#include "execq/internal/ThreadWorkerPool.h"
 
 #include <queue>
-#include <mutex>
-#include <thread>
-#include <atomic>
-#include <condition_variable>
 
 namespace execq
 {
@@ -70,6 +65,7 @@ namespace execq
             template <typename Y>
             void execute(T&& object, std::promise<Y>& promise, const std::atomic_bool& canceled);
             
+            void pushObject(std::unique_ptr<QueuedObject<T, R>> object);
             std::unique_ptr<QueuedObject<T, R>> popObject();
             void waitAllTasks();
             
@@ -80,14 +76,14 @@ namespace execq
             std::queue<std::unique_ptr<QueuedObject<T, R>>> m_taskQueue;
             std::mutex m_taskQueueMutex;
             std::condition_variable m_taskQueueCondition;
+            
             CancelTokenProvider m_cancelTokenProvider;
             
             const bool m_isSerial = false;
             std::shared_ptr<ThreadWorkerPool> m_workerPool;
             std::function<R(const std::atomic_bool& isCanceled, T&& object)> m_executor;
             
-            
-            ThreadWorker m_additionalWorker;
+            std::unique_ptr<IThreadWorker> m_additionalWorker;
         };
     }
 }
@@ -98,7 +94,7 @@ execq::details::ExecutionQueue<T, R>::ExecutionQueue(const bool serial, std::sha
 : m_isSerial(serial)
 , m_workerPool(workerPool)
 , m_executor(std::move(executor))
-, m_additionalWorker(*this)
+, m_additionalWorker(workerPool->createNewWorker(*this))
 {
     m_workerPool->addProvider(*this);
 }
@@ -114,12 +110,6 @@ execq::details::ExecutionQueue<T, R>::~ExecutionQueue()
 // IExecutionQueue
 
 template <typename T, typename R>
-void execq::details::ExecutionQueue<T, R>::cancel()
-{
-    m_cancelTokenProvider.cancelAndRenew();
-}
-
-template <typename T, typename R>
 std::future<R> execq::details::ExecutionQueue<T, R>::pushImpl(std::unique_ptr<T> object)
 {
     using QueuedObject = details::QueuedObject<T, R>;
@@ -128,19 +118,20 @@ std::future<R> execq::details::ExecutionQueue<T, R>::pushImpl(std::unique_ptr<T>
     std::future<R> future = promise.get_future();
     
     std::unique_ptr<QueuedObject> queuedObject(new QueuedObject { std::move(object), std::move(promise), m_cancelTokenProvider.token() });
+    pushObject(std::move(queuedObject));
     
+    if (!m_workerPool->notifyOneWorker())
     {
-        std::lock_guard<std::mutex> lock(m_taskQueueMutex);
-        m_hasTask = true;
-        m_taskQueue.push(std::move(queuedObject));
-    }
-    
-    if (!m_workerPool->startTask())
-    {
-        m_additionalWorker.startTask();
+        m_additionalWorker->notifyWorker();
     }
     
     return future;
+}
+
+template <typename T, typename R>
+void execq::details::ExecutionQueue<T, R>::cancel()
+{
+    m_cancelTokenProvider.cancelAndRenew();
 }
 
 // ITaskProvider
@@ -245,6 +236,14 @@ template <typename Y>
 void execq::details::ExecutionQueue<T, R>::execute(T&& object, std::promise<Y>& promise, const std::atomic_bool& canceled)
 {
     promise.set_value(m_executor(canceled, std::move(object)));
+}
+
+template <typename T, typename R>
+void execq::details::ExecutionQueue<T, R>::pushObject(std::unique_ptr<QueuedObject<T, R>> object)
+{
+    std::lock_guard<std::mutex> lock(m_taskQueueMutex);
+    m_hasTask = true;
+    m_taskQueue.push(std::move(object));
 }
 
 template <typename T, typename R>

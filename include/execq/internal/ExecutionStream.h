@@ -25,57 +25,49 @@
 #pragma once
 
 #include "execq/IExecutionStream.h"
-#include "execq/internal/ITaskProvider.h"
+#include "execq/internal/ThreadWorkerPool.h"
 
 #include <mutex>
 #include <thread>
 #include <atomic>
 #include <condition_variable>
 
-//namespace execq
-//{
-//    namespace details
-//    {
-//        class IExecutionStreamDelegate
-//        {
-//        public:
-//            virtual ~IExecutionStreamDelegate() = default;
-//
-//            virtual void registerStreamTaskProvider(details::ITaskProvider& taskProvider) = 0;
-//            virtual void unregisterStreamTaskProvider(const details::ITaskProvider& taskProvider) = 0;
-//            virtual void streamDidStart() = 0;
-//        };
-//        
-//        
-//        class ExecutionStream: public IExecutionStream, private ITaskProvider
-//        {
-//        public:
-//            ExecutionStream(IExecutionStreamDelegate& delegate, std::function<void(const std::atomic_bool& isCanceled)> executee);
-//            ~ExecutionStream();
-//            
-//        public: // IExecutionStream
-//            virtual void start() final;
-//            virtual void stop() final;
-//            
-//        private: // ITaskProvider
-//            virtual Task nextTask() final;
-//            
-//        private:
-//            void waitPendingTasks();
-//            
-//        private:
-//            std::atomic_bool m_shouldQuit { false };
-//            std::atomic_bool m_started { false };
-//            
-//            size_t m_tasksRunningCount { 0 };
-//            std::mutex m_taskCompleteMutex;
-//            std::condition_variable m_taskCompleteCondition;
-//            
-//            std::mutex m_taskStartMutex;
-//            std::condition_variable m_taskStartCondition;
-//            
-//            std::reference_wrapper<IExecutionStreamDelegate> m_delegate;
-//            std::function<void(const std::atomic_bool& shouldQuit)> m_executee;
-//        };
-//    }
-//}
+namespace execq
+{
+    namespace details
+    {
+        class ExecutionStream: public IExecutionStream, private IThreadWorkerPoolTaskProvider
+        {
+        public:
+            ExecutionStream(std::shared_ptr<ThreadWorkerPool> workerPool, std::function<void(const std::atomic_bool& isCanceled)> executee);
+            ~ExecutionStream();
+            
+        public: // IExecutionStream
+            virtual void start() final;
+            virtual void stop() final;
+            
+        private: // IThreadWorkerPoolTaskProvider
+            virtual bool execute() final;
+            virtual bool hasTask() const final;
+            
+        private:
+            void waitPendingTasks();
+            
+        private:
+            std::atomic_bool m_shouldQuit { false };
+            std::atomic_bool m_started { false };
+            
+            size_t m_tasksRunningCount { 0 };
+            std::mutex m_taskCompleteMutex;
+            std::condition_variable m_taskCompleteCondition;
+            
+            std::mutex m_taskStartMutex;
+            std::condition_variable m_taskStartCondition;
+            
+            std::shared_ptr<ThreadWorkerPool> m_workerPool;
+            std::function<void(const std::atomic_bool& shouldQuit)> m_executee;
+            
+            ThreadWorker m_additionalWorker;
+        };
+    }
+}

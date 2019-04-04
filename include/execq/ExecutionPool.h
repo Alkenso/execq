@@ -26,8 +26,7 @@
 
 #include "execq/internal/ExecutionStream.h"
 #include "execq/internal/ExecutionQueue.h"
-#include "execq/internal/TaskProviderList.h"
-#include "execq/internal/ThreadWorker.h"
+#include "execq/internal/ThreadWorkerPool.h"
 
 #include <map>
 #include <list>
@@ -49,7 +48,6 @@ namespace execq
          * Usually you should create single instance of ExecutionPool with multiple IExecutionQueue/IExecutionStream to achive best performance.
          */
         ExecutionPool();
-//        ~ExecutionPool();
         
         /**
          * @brief Creates execution queue with specific processing function.
@@ -73,40 +71,8 @@ namespace execq
          */
         std::unique_ptr<IExecutionStream> createExecutionStream(std::function<void(const std::atomic_bool& isCanceled)> executee);
         
-//    private: // details::IExecutionQueueDelegate
-//        virtual void registerQueueTaskProvider(details::ITaskProvider& taskProvider) final;
-//        virtual void unregisterQueueTaskProvider(const details::ITaskProvider& taskProvider) final;
-//        virtual void queueDidReceiveNewTask() final;
-        
-//    private: // details::IExecutionStreamDelegate
-//        virtual void registerStreamTaskProvider(details::ITaskProvider& taskProvider) final;
-//        virtual void unregisterStreamTaskProvider(const details::ITaskProvider& taskProvider) final;
-//        virtual void streamDidStart() final;
-        
-    private: // details::IThreadWorkerDelegate
-//        bool execute() final;
-//        virtual bool valid() const final;
-//        virtual void workerDidFinishTask() final;
-        
-    private:
-//        void registerTaskProvider(details::ITaskProvider& taskProvider);
-//        void unregisterTaskProvider(const details::ITaskProvider& taskProvider);
-//        void shutdown();
-        
-//        bool startTask();
-        
     private:
         std::shared_ptr<details::ThreadWorkerPool> m_workerPool;
-        
-//        std::atomic_bool m_shouldQuit { false };
-        
-//        details::TaskProviderList m_taskProviders;
-//        std::mutex m_providersMutex;
-//        std::condition_variable m_providersCondition;
-        
-//        std::vector<std::unique_ptr<details::ThreadWorker>> m_workers;
-//        std::map<const details::ITaskProvider*, std::shared_ptr<details::ThreadWorker>> m_additionalWorkers;
-//        std::thread m_schedulerThread;
     };
 }
 

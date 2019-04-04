@@ -20,15 +20,14 @@ set(LIB_SOURCES
     include/execq/ExecutionPool.h
     include/execq/execq.h
 
-    include/execq/internal/TaskProviderList.h
-    include/execq/internal/ITaskProvider.h
     include/execq/internal/ExecutionStream.h
     include/execq/internal/ExecutionQueue.h
     include/execq/internal/ThreadWorker.h
+    include/execq/internal/ThreadWorkerPool.h
     include/execq/internal/CancelTokenProvider.h
 
     src/ThreadWorker.cpp
-    src/TaskProviderList.cpp
+    src/ThreadWorkerPool.cpp
     src/ExecutionStream.cpp
     src/ExecutionPool.cpp
     src/CancelTokenProvider.cpp

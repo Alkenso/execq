@@ -24,11 +24,13 @@
 
 #include "ExecutionStream.h"
 
-execq::details::ExecutionStream::ExecutionStream(IExecutionStreamDelegate& delegate, std::function<void(const std::atomic_bool& isCanceled)> executee)
-: m_delegate(delegate)
+execq::details::ExecutionStream::ExecutionStream(std::shared_ptr<ThreadWorkerPool> workerPool,
+                                                 std::function<void(const std::atomic_bool& isCanceled)> executee)
+: m_workerPool(workerPool)
 , m_executee(std::move(executee))
+, m_additionalWorker(*this)
 {
-    m_delegate.get().registerStreamTaskProvider(*this);
+    m_workerPool->addProvider(*this);
 }
 
 execq::details::ExecutionStream::~ExecutionStream()
@@ -37,7 +39,7 @@ execq::details::ExecutionStream::~ExecutionStream()
     m_shouldQuit = true;
     m_taskStartCondition.notify_all();
     waitPendingTasks();
-    m_delegate.get().unregisterStreamTaskProvider(*this);
+    m_workerPool->removeProvider(*this);
 }
 
 // IExecutionStream
@@ -45,8 +47,8 @@ execq::details::ExecutionStream::~ExecutionStream()
 void execq::details::ExecutionStream::start()
 {
     m_started = true;
-    m_delegate.get().streamDidStart();
-    m_taskStartCondition.notify_one();
+    m_workerPool->notifyAllWorkers();
+    m_additionalWorker.notifyWorker();
 }
 
 void execq::details::ExecutionStream::stop()
@@ -54,25 +56,31 @@ void execq::details::ExecutionStream::stop()
     m_started = false;
 }
 
-// ITaskProvider
+// IThreadWorkerPoolTaskProvider
 
-execq::details::Task execq::details::ExecutionStream::nextTask()
+bool execq::details::ExecutionStream::execute()
 {
     if (!m_started)
     {
-        return Task();
+        return false;
     }
     
     std::lock_guard<std::mutex> lock(m_taskCompleteMutex);
     m_tasksRunningCount++;
+    m_executee(m_shouldQuit);
+    m_tasksRunningCount--;
     
-    return Task([this] () {
-        m_executee(m_shouldQuit);
-        
-        std::lock_guard<std::mutex> lock(m_taskCompleteMutex);
-        m_tasksRunningCount--;
+    if (m_tasksRunningCount)
+    {
         m_taskCompleteCondition.notify_one();
-    });
+    }
+    
+    return true;
+}
+
+bool execq::details::ExecutionStream::hasTask() const
+{
+    return m_started;
 }
 
 // Private
