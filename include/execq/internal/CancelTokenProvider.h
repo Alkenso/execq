@@ -30,7 +30,7 @@
 
 namespace execq
 {
-    namespace details
+    namespace impl
     {
         using CancelToken = std::shared_ptr<std::atomic_bool>;
         class CancelTokenProvider

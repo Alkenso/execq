@@ -24,7 +24,7 @@
 
 #include "ExecutionStream.h"
 
-execq::details::ExecutionStream::ExecutionStream(std::shared_ptr<ThreadWorkerPool> workerPool,
+execq::impl::ExecutionStream::ExecutionStream(std::shared_ptr<ThreadWorkerPool> workerPool,
                                                  std::function<void(const std::atomic_bool& isCanceled)> executee)
 : m_workerPool(workerPool)
 , m_executee(std::move(executee))
@@ -33,10 +33,9 @@ execq::details::ExecutionStream::ExecutionStream(std::shared_ptr<ThreadWorkerPoo
     m_workerPool->addProvider(*this);
 }
 
-execq::details::ExecutionStream::~ExecutionStream()
+execq::impl::ExecutionStream::~ExecutionStream()
 {
     stop();
-    m_shouldQuit = true;
     m_taskStartCondition.notify_all();
     waitPendingTasks();
     m_workerPool->removeProvider(*this);
@@ -44,30 +43,29 @@ execq::details::ExecutionStream::~ExecutionStream()
 
 // IExecutionStream
 
-void execq::details::ExecutionStream::start()
+void execq::impl::ExecutionStream::start()
 {
     m_started = true;
     m_workerPool->notifyAllWorkers();
     m_additionalWorker.notifyWorker();
 }
 
-void execq::details::ExecutionStream::stop()
+void execq::impl::ExecutionStream::stop()
 {
     m_started = false;
 }
 
 // IThreadWorkerPoolTaskProvider
 
-bool execq::details::ExecutionStream::execute()
+bool execq::impl::ExecutionStream::execute()
 {
     if (!m_started)
     {
         return false;
     }
     
-    std::lock_guard<std::mutex> lock(m_taskCompleteMutex);
     m_tasksRunningCount++;
-    m_executee(m_shouldQuit);
+    m_executee(m_started);
     m_tasksRunningCount--;
     
     if (m_tasksRunningCount)
@@ -78,14 +76,14 @@ bool execq::details::ExecutionStream::execute()
     return true;
 }
 
-bool execq::details::ExecutionStream::hasTask() const
+bool execq::impl::ExecutionStream::hasTask() const
 {
     return m_started;
 }
 
 // Private
 
-void execq::details::ExecutionStream::waitPendingTasks()
+void execq::impl::ExecutionStream::waitPendingTasks()
 {
     std::unique_lock<std::mutex> lock(m_taskCompleteMutex);
     while (m_tasksRunningCount > 0)

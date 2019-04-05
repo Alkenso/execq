@@ -34,9 +34,9 @@
 
 namespace execq
 {
-    namespace details
+    namespace impl
     {
-        class ExecutionStream: public IExecutionStream, private IThreadWorkerPoolTaskProvider
+        class ExecutionStream: public IExecutionStream, private ITaskProvider
         {
         public:
             ExecutionStream(std::shared_ptr<ThreadWorkerPool> workerPool, std::function<void(const std::atomic_bool& isCanceled)> executee);
@@ -54,7 +54,6 @@ namespace execq
             void waitPendingTasks();
             
         private:
-            std::atomic_bool m_shouldQuit { false };
             std::atomic_bool m_started { false };
             
             size_t m_tasksRunningCount { 0 };

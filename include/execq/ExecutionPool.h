@@ -72,18 +72,18 @@ namespace execq
         std::unique_ptr<IExecutionStream> createExecutionStream(std::function<void(const std::atomic_bool& isCanceled)> executee);
         
     private:
-        std::shared_ptr<details::ThreadWorkerPool> m_workerPool;
+        std::shared_ptr<impl::ThreadWorkerPool> m_workerPool;
     };
 }
 
 template <typename T, typename R>
 std::unique_ptr<execq::IExecutionQueue<R(T)>> execq::ExecutionPool::createConcurrentExecutionQueue(std::function<R(const std::atomic_bool& isCanceled, T&& object)> executor)
 {
-    return std::unique_ptr<details::ExecutionQueue<T, R>>(new details::ExecutionQueue<T, R>(false, m_workerPool, std::move(executor)));
+    return std::unique_ptr<impl::ExecutionQueue<T, R>>(new impl::ExecutionQueue<T, R>(false, m_workerPool, std::move(executor)));
 }
 
 template <typename T, typename R>
 std::unique_ptr<execq::IExecutionQueue<R(T)>> execq::ExecutionPool::createSerialExecutionQueue(std::function<R(const std::atomic_bool& isCanceled, T&& object)> executor)
 {
-    return std::unique_ptr<details::ExecutionQueue<T, R>>(new details::ExecutionQueue<T, R>(true, m_workerPool, std::move(executor)));
+    return std::unique_ptr<impl::ExecutionQueue<T, R>>(new impl::ExecutionQueue<T, R>(true, m_workerPool, std::move(executor)));
 }

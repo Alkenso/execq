@@ -24,29 +24,30 @@
 
 #include "ThreadWorker.h"
 
-execq::details::ThreadWorker::ThreadWorker(IThreadWorkerTaskProvider& provider)
+execq::impl::ThreadWorker::ThreadWorker(ITaskExecutor& provider)
 : m_provider(provider)
 {}
 
-execq::details::ThreadWorker::~ThreadWorker()
+execq::impl::ThreadWorker::~ThreadWorker()
 {
     shutdown();
-    if (m_thread.joinable())
+    if (m_thread && m_thread->joinable())
     {
-        m_thread.join();
+        m_thread->join();
     }
 }
 
-bool execq::details::ThreadWorker::notifyWorker()
+bool execq::impl::ThreadWorker::notifyWorker()
 {
     if (m_isWorking.test_and_set())
     {
         return false;
     }
     
-    if (!m_thread.joinable())
+    if (!m_thread)
     {
-        m_thread = std::thread(&ThreadWorker::threadMain, this);
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_thread.reset(new std::thread(&ThreadWorker::threadMain, this));
     }
     
     m_condition.notify_one();
@@ -54,16 +55,16 @@ bool execq::details::ThreadWorker::notifyWorker()
     return true;
 }
 
-void execq::details::ThreadWorker::shutdown()
+void execq::impl::ThreadWorker::shutdown()
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_shouldQuit = true;
     m_condition.notify_one();
 }
 
-void execq::details::ThreadWorker::threadMain()
+void execq::impl::ThreadWorker::threadMain()
 {
-    while (!m_shouldQuit)
+    while (true)
     {
         std::unique_lock<std::mutex> lock(m_mutex);
         

@@ -28,9 +28,9 @@
 
 TEST(ExecutionPool, CancelTokenProvider)
 {
-    execq::details::CancelTokenProvider provider;
+    execq::impl::CancelTokenProvider provider;
     
-    execq::details::CancelToken token = provider.token();
+    execq::impl::CancelToken token = provider.token();
     ASSERT_NE(token, nullptr);
     
     // be default, token is not canceled

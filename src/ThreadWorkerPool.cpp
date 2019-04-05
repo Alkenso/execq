@@ -24,23 +24,7 @@
 
 #include "ThreadWorkerPool.h"
 
-namespace
-{
-    bool NotifyWorkers(const std::vector<std::unique_ptr<execq::details::IThreadWorker>>& workers, const bool single)
-    {
-        for (const auto& worker : workers)
-        {
-            if (worker->notifyWorker() && single)
-            {
-                return true;
-            }
-        }
-        
-        return false;
-    }
-}
-
-execq::details::ThreadWorkerPool::ThreadWorkerPool()
+execq::impl::ThreadWorkerPool::ThreadWorkerPool()
 {
     const uint32_t defaultThreadCount = 4;
     const uint32_t hardwareThreadCount = std::thread::hardware_concurrency();
@@ -48,73 +32,45 @@ execq::details::ThreadWorkerPool::ThreadWorkerPool()
     const uint32_t threadCount = hardwareThreadCount ? hardwareThreadCount : defaultThreadCount;
     for (uint32_t i = 0; i < threadCount; i++)
     {
-        m_workers.emplace_back(createNewWorker(*this));
+        m_workers.emplace_back(createNewWorker(m_providerGroup));
     }
 }
 
-std::unique_ptr<execq::details::IThreadWorker> execq::details::ThreadWorkerPool::createNewWorker(IThreadWorkerTaskProvider& provider) const
+std::unique_ptr<execq::impl::IThreadWorker> execq::impl::ThreadWorkerPool::createNewWorker(ITaskExecutor& provider) const
 {
     return std::unique_ptr<ThreadWorker>(new ThreadWorker(provider));
 }
 
-void execq::details::ThreadWorkerPool::addProvider(IThreadWorkerPoolTaskProvider& provider)
+void execq::impl::ThreadWorkerPool::addProvider(ITaskProvider& provider)
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    m_taskProviders.push_back(&provider);
-    m_currentTaskProviderIt = m_taskProviders.begin();
+    m_providerGroup.addProvider(provider);
 }
 
-void execq::details::ThreadWorkerPool::removeProvider(IThreadWorkerPoolTaskProvider& provider)
+void execq::impl::ThreadWorkerPool::removeProvider(ITaskProvider& provider)
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    const auto it = std::find(m_taskProviders.begin(), m_taskProviders.end(), &provider);
-    if (it != m_taskProviders.end())
-    {
-        m_taskProviders.erase(it);
-        m_currentTaskProviderIt = m_taskProviders.begin();
-    }
+    m_providerGroup.removeProvider(provider);
 }
 
-execq::details::IThreadWorkerPoolTaskProvider* execq::details::ThreadWorkerPool::nextProviderWithTask()
+bool execq::impl::ThreadWorkerPool::notifyOneWorker()
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    
-    const size_t taskProvidersCount = m_taskProviders.size();
-    const auto listEndIt = m_taskProviders.end();
-    
-    for (size_t i = 0; i < taskProvidersCount; i++)
+    return details::NotifyWorkers(m_workers, true);
+}
+
+void execq::impl::ThreadWorkerPool::notifyAllWorkers()
+{
+    details::NotifyWorkers(m_workers, false);
+}
+
+// Details
+
+bool execq::impl::details::NotifyWorkers(const std::vector<std::unique_ptr<IThreadWorker>>& workers, const bool single)
+{
+    for (const auto& worker : workers)
     {
-        if (m_currentTaskProviderIt == listEndIt)
+        if (worker->notifyWorker() && single)
         {
-            m_currentTaskProviderIt = m_taskProviders.begin();
+            return true;
         }
-        
-        IThreadWorkerPoolTaskProvider* provider = *(m_currentTaskProviderIt++);
-        if (provider->hasTask())
-        {
-            return provider;
-        }
-    }
-    
-    return nullptr;
-}
-
-bool execq::details::ThreadWorkerPool::notifyOneWorker()
-{
-    return NotifyWorkers(m_workers, true);
-}
-
-void execq::details::ThreadWorkerPool::notifyAllWorkers()
-{
-    NotifyWorkers(m_workers, false);
-}
-
-bool execq::details::ThreadWorkerPool::execute()
-{
-    IThreadWorkerPoolTaskProvider *const provider = nextProviderWithTask();
-    if (provider)
-    {
-        return provider->execute();
     }
     
     return false;

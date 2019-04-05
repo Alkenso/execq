@@ -24,13 +24,17 @@ set(LIB_SOURCES
     include/execq/internal/ExecutionQueue.h
     include/execq/internal/ThreadWorker.h
     include/execq/internal/ThreadWorkerPool.h
+    include/execq/internal/TaskProviderGroup.h
     include/execq/internal/CancelTokenProvider.h
+    include/execq/internal/ExecqUtils.h
 
     src/ThreadWorker.cpp
     src/ThreadWorkerPool.cpp
+    src/TaskProviderGroup.cpp
     src/ExecutionStream.cpp
     src/ExecutionPool.cpp
     src/CancelTokenProvider.cpp
+    src/ExecqUtils.cpp
 )
 
 add_library(execq STATIC ${LIB_SOURCES})
@@ -49,10 +53,10 @@ include_directories(execq PRIVATE
 
 if (EXECQ_ENABLE_TESTING)
     set(TEST_SOURCES
-        tests/TaskProviderListTest.cpp
+        tests/CancelTokenProviderTest.cpp
         tests/ExecutionStreamTest.cpp
         tests/ExecutionQueueTest.cpp
-        tests/CancelTokenProviderTest.cpp
+        tests/TaskProviderGroupTest.cpp
     )
     add_executable(execq_tests ${TEST_SOURCES})
 

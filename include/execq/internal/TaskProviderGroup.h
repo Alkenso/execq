@@ -22,33 +22,43 @@
  * SOFTWARE.
  */
 
-#include "CancelTokenProvider.h"
+#pragma once
 
-execq::impl::CancelToken execq::impl::CancelTokenProvider::token()
-{
-    std::lock_guard<std::mutex> lock(m_mutex);
-    return m_currentToken;
-}
+#include "execq/internal/ThreadWorker.h"
 
-void execq::impl::CancelTokenProvider::cancel()
-{
-    cancelAndRenew(false);
-}
+#include <mutex>
+#include <list>
 
-void execq::impl::CancelTokenProvider::cancelAndRenew()
+namespace execq
 {
-    cancelAndRenew(true);
-}
-
-void execq::impl::CancelTokenProvider::cancelAndRenew(const bool renew)
-{
-    std::lock_guard<std::mutex> lock(m_mutex);
-    if (m_currentToken)
+    namespace impl
     {
-        *m_currentToken = true;
-    }
-    if (renew)
-    {
-        m_currentToken = std::make_shared<std::atomic_bool>(false);
+        class ITaskProvider: public ITaskExecutor
+        {
+        public:
+            virtual bool hasTask() const = 0;
+        };
+        
+        
+        class TaskProviderGroup: public ITaskExecutor
+        {
+        public: // IThreadWorkerTaskProvider
+            virtual bool execute() final;
+            
+        public:
+            void addProvider(ITaskProvider& provider);
+            void removeProvider(ITaskProvider& provider);
+            
+        private:
+            ITaskProvider* nextProviderWithTask();
+            
+        private:
+            using TaskProviders_lt = std::list<ITaskProvider*>;
+            TaskProviders_lt m_taskProviders;
+            TaskProviders_lt::iterator m_currentTaskProviderIt;
+            std::mutex m_mutex;
+        };
     }
 }
+
+

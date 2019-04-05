@@ -25,7 +25,7 @@
 #include <gmock/gmock.h>
 
 #include "ExecutionPool.h"
-#include "ExecutionStream.h"
+//#include "ExecutionStream.h"
 
 namespace
 {
@@ -53,25 +53,58 @@ namespace
         return true;
     }
     
-    class MockExecutionQueueDelegate: public execq::details::IExecutionQueueDelegate
+    class MockThreadWorkerPool: public execq::impl::IThreadWorkerPool
     {
     public:
-        MOCK_METHOD1(registerQueueTaskProvider, void(execq::details::ITaskProvider& taskProvider));
-        MOCK_METHOD1(unregisterQueueTaskProvider, void(const execq::details::ITaskProvider& taskProvider));
-        MOCK_METHOD0(queueDidReceiveNewTask, void());
+        MOCK_CONST_METHOD1(createNewWorker, std::unique_ptr<execq::impl::IThreadWorker>(execq::impl::ITaskExecutor& provider));
+        
+        MOCK_METHOD1(addProvider, void(execq::impl::ITaskProvider& provider));
+        MOCK_METHOD1(removeProvider, void(execq::impl::ITaskProvider& provider));
+        
+        MOCK_METHOD0(notifyOneWorker, bool());
+        MOCK_METHOD0(notifyAllWorkers, void());
+    };
+    
+    class MockThreadWorker: public execq::impl::IThreadWorker
+    {
+    public:
+        MOCK_METHOD0(notifyWorker, bool());
     };
 }
+
+#include <dispatch/dispatch.h>
+//TEST(ExecutionPool, ExecutionQueue_SingleTask1)
+//{
+//    execq::ExecutionPool pool;
+//
+//    auto queue = pool.createConcurrentExecutionQueue<std::string, void>([] (const std::atomic_bool&, std::string&& s) {
+//        std::string ss;
+//        for (volatile int i = 0; i < 100; i++)
+//        {
+//            ss += s;
+//        }
+//
+//        return ss;
+//    });
+//
+//    auto* qq = queue.get();
+//
+//    dispatch_apply(1000000, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(size_t a) {
+//        qq->push("ludfkldjsfj dsjfkldsajf lkdjsafldsklfhdjksfhs hfjkdsa fgadsgfjkadsfhjdshjgs");
+//    });
+//
+//}
 
 TEST(ExecutionPool, ExecutionQueue_SingleTask)
 {
     execq::ExecutionPool pool;
-    
+
     ::testing::MockFunction<void(const std::atomic_bool&, std::string&&)> mockExecutor;
     auto queue = pool.createConcurrentExecutionQueue(mockExecutor.AsStdFunction());
-    
+
     EXPECT_CALL(mockExecutor, Call(::testing::_, CompareRvalue("qwe")))
     .WillOnce(::testing::Return());
-    
+
     queue->push("qwe");
 }
 
@@ -88,23 +121,23 @@ TEST(ExecutionPool, ExecutionQueue_SingleTask_WithFuture)
         WaitForLongTermJob();
         return s;
     }));
-    
+
     std::future<std::string> result = queue->push("qwe");
-    
+
     EXPECT_TRUE(result.wait_for(kTimeout) == std::future_status::ready);
 }
 
 TEST(ExecutionPool, ExecutionQueue_MultipleTasks)
 {
     execq::ExecutionPool pool;
-    
+
     ::testing::MockFunction<void(const std::atomic_bool&, uint32_t&&)> mockExecutor;
     auto queue = pool.createConcurrentExecutionQueue(mockExecutor.AsStdFunction());
-    
+
     const size_t count = 1000;
     EXPECT_CALL(mockExecutor, Call(::testing::_, ::testing::_))
     .Times(count).WillRepeatedly(::testing::Return());
-    
+
     for (size_t i = 0; i < count; i++)
     {
         queue->push(arc4random());
@@ -114,7 +147,7 @@ TEST(ExecutionPool, ExecutionQueue_MultipleTasks)
 TEST(ExecutionPool, ExecutionQueue_TaskExecutionWhenQueueDestroyed)
 {
     execq::ExecutionPool pool;
-    
+
     std::promise<std::pair<bool, std::string>> isExecutedPromise;
     auto isExecuted = isExecutedPromise.get_future();
     auto queue = pool.createConcurrentExecutionQueue<std::string, void>([&isExecutedPromise] (const std::atomic_bool& shouldQuit, std::string&& object) {
@@ -123,129 +156,183 @@ TEST(ExecutionPool, ExecutionQueue_TaskExecutionWhenQueueDestroyed)
         isExecutedPromise.set_value(std::make_pair(shouldQuit.load(), object));
     });
     queue->push("qwe");
-    
+
     // delete queue
     queue.reset();
-    
+
     ASSERT_TRUE(isExecuted.valid());
-    
+
     std::pair<bool, std::string> executeState = isExecuted.get();
     EXPECT_EQ(executeState.first, true);
     EXPECT_EQ(executeState.second, "qwe");
 }
 
-TEST(ExecutionPool, ExecutionQueue_Delegate)
+TEST(ExecutionPool, ExecutionQueue_WorkerPool_Concurrent)
 {
-    MockExecutionQueueDelegate delegate;
+    auto workerPool = std::make_shared<MockThreadWorkerPool>();
     
-    //  Queue must call 'register' method when created and 'unregister' method when destroyed.
-    execq::details::ITaskProvider* registeredProvider = nullptr;
-    EXPECT_CALL(delegate, registerQueueTaskProvider(SaveArgAddress(&registeredProvider)))
+    //  Queue must 'register' itself in WorkerThreadPool when created
+    execq::impl::ITaskProvider* registeredProvider = nullptr;
+    EXPECT_CALL(*workerPool, addProvider(SaveArgAddress(&registeredProvider)))
     .WillOnce(::testing::Return());
+
     
+    // Queue also creates additional single thread worker for its own needs
+    std::unique_ptr<MockThreadWorker> additionalWorkerPtr(new MockThreadWorker{});
+    MockThreadWorker& additionalWorker = *additionalWorkerPtr;
+    EXPECT_CALL(*workerPool, createNewWorker(::testing::_))
+    .WillOnce(::testing::Return(::testing::ByMove(std::move(additionalWorkerPtr))));
+    
+    
+    // Create queue with mock execution function
     ::testing::MockFunction<void(const std::atomic_bool&, std::string&&)> mockExecutor;
-    execq::details::ExecutionQueue<std::string, void> queue(false, delegate, mockExecutor.AsStdFunction());
-    
+    execq::impl::ExecutionQueue<std::string, void> queue(false, workerPool, mockExecutor.AsStdFunction());
     ASSERT_NE(registeredProvider, nullptr);
     
-    EXPECT_CALL(delegate, queueDidReceiveNewTask())
-    .WillOnce(::testing::Return());
     
-    EXPECT_CALL(mockExecutor, Call(CompareWithAtomic(false), CompareRvalue("qwe")))
-    .WillOnce(::testing::Return());
-    
+    // When new object comes to the queue, it notifies workers
+    EXPECT_CALL(*workerPool, notifyOneWorker())
+    .WillOnce(::testing::Return(true));
     queue.push("qwe");
     
-    execq::details::Task task = registeredProvider->nextTask();
-    ASSERT_TRUE(task.valid());
-    task();
     
-    EXPECT_CALL(delegate, unregisterQueueTaskProvider(::testing::_))
+    // If all workers of the pool are busy, trigger additional (own) worker
+    EXPECT_CALL(*workerPool, notifyOneWorker())
+    .WillOnce(::testing::Return(false));
+    EXPECT_CALL(additionalWorker, notifyWorker())
+    .WillOnce(::testing::Return(true));
+    queue.push("asd");
+    
+    
+    // Test that executors method is called in the proper moment
+    ASSERT_TRUE(registeredProvider->hasTask());
+    EXPECT_CALL(mockExecutor, Call(CompareWithAtomic(false), CompareRvalue("qwe")))
+    .WillOnce(::testing::Return());
+    ASSERT_TRUE(registeredProvider->execute());
+
+    ASSERT_TRUE(registeredProvider->hasTask());
+    EXPECT_CALL(mockExecutor, Call(CompareWithAtomic(false), CompareRvalue("asd")))
+    .WillOnce(::testing::Return());
+    ASSERT_TRUE(registeredProvider->execute());
+    
+    
+    // No tasks - no execution
+    EXPECT_FALSE(registeredProvider->execute());
+    EXPECT_FALSE(registeredProvider->hasTask());
+    
+    
+    //  Queue must 'unregister' itself in WorkerThreadPool when destroyed
+    EXPECT_CALL(*workerPool, removeProvider(::testing::_))
     .WillOnce(::testing::Return());
 }
 
-TEST(ExecutionPool, ExecutionQueue_Serial)
+TEST(ExecutionPool, ExecutionQueue_WorkerPool_Serial)
 {
-    MockExecutionQueueDelegate delegate;
+    auto workerPool = std::make_shared<MockThreadWorkerPool>();
     
-    //  Queue must call 'register' method when created and 'unregister' method when destroyed.
-    execq::details::ITaskProvider* serialProvider = nullptr;
-    EXPECT_CALL(delegate, registerQueueTaskProvider(SaveArgAddress(&serialProvider)))
+    //  Queue must 'register' itself in WorkerThreadPool when created
+    execq::impl::ITaskProvider* registeredProvider = nullptr;
+    EXPECT_CALL(*workerPool, addProvider(SaveArgAddress(&registeredProvider)))
     .WillOnce(::testing::Return());
     
+    // Queue also creates additional single thread worker for its own needs
+    std::unique_ptr<MockThreadWorker> additionalWorkerPtr(new MockThreadWorker{});
+    MockThreadWorker& additionalWorker = *additionalWorkerPtr;
+    EXPECT_CALL(*workerPool, createNewWorker(::testing::_))
+    .WillOnce(::testing::Return(::testing::ByMove(std::move(additionalWorkerPtr))));
+    
+    
+    // Create queue with mock execution function
     ::testing::MockFunction<void(const std::atomic_bool&, std::string&&)> mockExecutor;
-    execq::details::ExecutionQueue<std::string, void> queue(true, delegate, mockExecutor.AsStdFunction());
+    execq::impl::ExecutionQueue<std::string, void> queue(true, workerPool, mockExecutor.AsStdFunction());
+    ASSERT_NE(registeredProvider, nullptr);
     
-    ASSERT_NE(serialProvider, nullptr);
     
-    // setup other mock calls for test correctness
-    EXPECT_CALL(delegate, queueDidReceiveNewTask())
-    .WillRepeatedly(::testing::Return());
+    // When new object comes to the queue, it notifies workers
+    EXPECT_CALL(*workerPool, notifyOneWorker())
+    .WillOnce(::testing::Return(true));
+    queue.push("qwe");
     
-    EXPECT_CALL(delegate, unregisterQueueTaskProvider(::testing::_))
+    
+    // The serial queue already has a task for execution, no reason to notify workers
+    EXPECT_CALL(*workerPool, notifyOneWorker())
+    .Times(0);
+    EXPECT_CALL(additionalWorker, notifyWorker())
+    .Times(0);
+    queue.push("asd");
+    
+    
+    // Test that executors method is called in the proper moment
+    ASSERT_TRUE(registeredProvider->hasTask());
+    EXPECT_CALL(mockExecutor, Call(CompareWithAtomic(false), CompareRvalue("qwe")))
     .WillOnce(::testing::Return());
     
-    EXPECT_CALL(mockExecutor, Call(CompareWithAtomic(false), CompareRvalue("qwe")))
-    .Times(2).WillRepeatedly(::testing::Return());
+    // For serial queue, if the operation completes and there is any task to execute, it will notify workers to handle it
+    EXPECT_CALL(*workerPool, notifyOneWorker())
+    .WillOnce(::testing::Return(true));
+    ASSERT_TRUE(registeredProvider->execute());
     
-    // push few object into the queue
-    queue.push("qwe");
-    queue.push("qwe");
     
-    // Serial queue should provide next valid task ONLY by one.
-    // If any task is in progress (i.e. popped out of the queue), 'nextTask' have to return invalid task.
-    execq::details::Task task1 = serialProvider->nextTask();
-    ASSERT_TRUE(task1.valid());
+    ASSERT_TRUE(registeredProvider->hasTask());
+    EXPECT_CALL(mockExecutor, Call(CompareWithAtomic(false), CompareRvalue("asd")))
+    .WillOnce(::testing::Return());
+    ASSERT_TRUE(registeredProvider->execute());
     
-    // ensure that attempts to get next task fails.
-    ASSERT_FALSE(serialProvider->nextTask().valid());
     
-    // run current task. The next task should be available right after call
-    task1();
+    // No tasks - no execution
+    EXPECT_FALSE(registeredProvider->execute());
+    EXPECT_FALSE(registeredProvider->hasTask());
     
-    execq::details::Task task2 = serialProvider->nextTask();
-    EXPECT_TRUE(task2.valid());
-    task2();
+    
+    //  Queue must 'unregister' itself in WorkerThreadPool when destroyed
+    EXPECT_CALL(*workerPool, removeProvider(::testing::_))
+    .WillOnce(::testing::Return());
 }
 
 TEST(ExecutionPool, ExecutionQueue_Cancelability)
 {
-    MockExecutionQueueDelegate delegate;
+    auto workerPool = std::make_shared<MockThreadWorkerPool>();
     
-    //  Queue must call 'register' method when created and 'unregister' method when destroyed.
-    execq::details::ITaskProvider* provider = nullptr;
-    EXPECT_CALL(delegate, registerQueueTaskProvider(SaveArgAddress(&provider)))
+    // Assume worker pool always has free workers
+    EXPECT_CALL(*workerPool, notifyOneWorker())
+    .WillRepeatedly(::testing::Return(true));
+    
+    
+    //  Queue must 'register' itself in WorkerThreadPool when created
+    execq::impl::ITaskProvider* registeredProvider = nullptr;
+    EXPECT_CALL(*workerPool, addProvider(SaveArgAddress(&registeredProvider)))
     .WillOnce(::testing::Return());
     
+    
+    // Queue also creates additional single thread worker for its own needs
+    std::unique_ptr<MockThreadWorker> additionalWorkerPtr(new MockThreadWorker{});
+    EXPECT_CALL(*workerPool, createNewWorker(::testing::_))
+    .WillOnce(::testing::Return(::testing::ByMove(std::move(additionalWorkerPtr))));
+    
+    
+    // Create queue with mock execution function
     ::testing::MockFunction<void(const std::atomic_bool&, std::string&&)> mockExecutor;
-    execq::details::ExecutionQueue<std::string, void> queue(false, delegate, mockExecutor.AsStdFunction());
-    
-    ASSERT_NE(provider, nullptr);
-    
-    // setup other mock calls for test correctness
-    EXPECT_CALL(delegate, queueDidReceiveNewTask())
-    .WillRepeatedly(::testing::Return());
-    
-    EXPECT_CALL(delegate, unregisterQueueTaskProvider(::testing::_))
-    .WillOnce(::testing::Return());
+    execq::impl::ExecutionQueue<std::string, void> queue(false, workerPool, mockExecutor.AsStdFunction());
+    ASSERT_NE(registeredProvider, nullptr);
     
     
-    queue.push("qwe1");
+    // When only objects pushed before 'cancel' call are really canceled
+    queue.push("qwe");
     queue.cancel();
-    queue.push("qwe2");
+    queue.push("asd");
     
     
-    execq::details::Task task1 = provider->nextTask();
-    ASSERT_TRUE(task1.valid());
-    
-    EXPECT_CALL(mockExecutor, Call(CompareWithAtomic(true), CompareRvalue("qwe1")))
+    EXPECT_CALL(mockExecutor, Call(CompareWithAtomic(true), CompareRvalue("qwe")))
     .WillOnce(::testing::Return());
-    task1();
     
-    execq::details::Task task2 = provider->nextTask();
-    ASSERT_TRUE(task2.valid());
-    
-    EXPECT_CALL(mockExecutor, Call(CompareWithAtomic(false), CompareRvalue("qwe2")))
+    EXPECT_CALL(mockExecutor, Call(CompareWithAtomic(false), CompareRvalue("asd")))
     .WillOnce(::testing::Return());
-    task2();
+    
+    ASSERT_TRUE(registeredProvider->execute());
+    ASSERT_TRUE(registeredProvider->execute());
+    
+    
+    //  Queue must 'unregister' itself in WorkerThreadPool when destroyed
+    EXPECT_CALL(*workerPool, removeProvider(::testing::_))
+    .WillOnce(::testing::Return());
 }

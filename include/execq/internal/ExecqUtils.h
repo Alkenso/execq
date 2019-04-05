@@ -22,33 +22,29 @@
  * SOFTWARE.
  */
 
-#include "CancelTokenProvider.h"
+#pragma once
 
-execq::impl::CancelToken execq::impl::CancelTokenProvider::token()
-{
-    std::lock_guard<std::mutex> lock(m_mutex);
-    return m_currentToken;
-}
+#include <functional>
 
-void execq::impl::CancelTokenProvider::cancel()
+namespace execq
 {
-    cancelAndRenew(false);
-}
-
-void execq::impl::CancelTokenProvider::cancelAndRenew()
-{
-    cancelAndRenew(true);
-}
-
-void execq::impl::CancelTokenProvider::cancelAndRenew(const bool renew)
-{
-    std::lock_guard<std::mutex> lock(m_mutex);
-    if (m_currentToken)
+    namespace impl
     {
-        *m_currentToken = true;
-    }
-    if (renew)
-    {
-        m_currentToken = std::make_shared<std::atomic_bool>(false);
+        class ScopeGuard
+        {
+        public:
+            template <typename ScopeExitHandler>
+            explicit ScopeGuard(ScopeExitHandler&& handler);
+            
+            ~ScopeGuard();
+            
+        private:
+            std::function<void(void) noexcept> m_handler;
+        };
     }
 }
+
+template <typename ScopeExitHandler>
+execq::impl::ScopeGuard::ScopeGuard(ScopeExitHandler&& handler)
+: m_handler(std::forward<ScopeExitHandler>(handler))
+{}

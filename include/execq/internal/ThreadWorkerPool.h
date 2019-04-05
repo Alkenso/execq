@@ -25,65 +25,55 @@
 #pragma once
 
 #include "execq/internal/ThreadWorker.h"
+#include "execq/internal/TaskProviderGroup.h"
 
 #include <atomic>
-#include <mutex>
+#include <memory>
 #include <vector>
-#include <list>
 
 namespace execq
 {
-    namespace details
+    namespace impl
     {
-        class IThreadWorkerPoolTaskProvider: public IThreadWorkerTaskProvider
-        {
-        public:
-            virtual bool hasTask() const = 0;
-        };
-        
-        
         class IThreadWorkerPool
         {
         public:
             virtual ~IThreadWorkerPool() = default;
             
-            virtual std::unique_ptr<IThreadWorker> createNewWorker(IThreadWorkerTaskProvider& provider) const = 0;
+            virtual std::unique_ptr<IThreadWorker> createNewWorker(ITaskExecutor& provider) const = 0;
             
-            virtual void addProvider(IThreadWorkerPoolTaskProvider& provider) = 0;
-            virtual void removeProvider(IThreadWorkerPoolTaskProvider& provider) = 0;
+            virtual void addProvider(ITaskProvider& provider) = 0;
+            virtual void removeProvider(ITaskProvider& provider) = 0;
             
             virtual bool notifyOneWorker() = 0;
             virtual void notifyAllWorkers() = 0;
         };
         
         
-        class ThreadWorkerPool: public IThreadWorkerPool, private IThreadWorkerTaskProvider
+        class ThreadWorkerPool: public IThreadWorkerPool
         {
         public:
             ThreadWorkerPool();
             
-            virtual std::unique_ptr<IThreadWorker> createNewWorker(IThreadWorkerTaskProvider& provider) const final;
+            virtual std::unique_ptr<IThreadWorker> createNewWorker(ITaskExecutor& provider) const final;
             
-            virtual void addProvider(IThreadWorkerPoolTaskProvider& provider) final;
-            virtual void removeProvider(IThreadWorkerPoolTaskProvider& provider) final;
+            virtual void addProvider(ITaskProvider& provider) final;
+            virtual void removeProvider(ITaskProvider& provider) final;
             
             virtual bool notifyOneWorker() final;
             virtual void notifyAllWorkers() final;
             
         private:
-            virtual bool execute() final;
-            
-            IThreadWorkerPoolTaskProvider* nextProviderWithTask();
-            
-        private:
-            std::vector<std::unique_ptr<IThreadWorker>> m_workers;
-            
-            using TaskProviders_lt = std::list<IThreadWorkerPoolTaskProvider*>;
-            TaskProviders_lt m_taskProviders;
-            TaskProviders_lt::iterator m_currentTaskProviderIt;
-            std::mutex m_mutex;
             std::atomic_bool m_valid { true };
+            TaskProviderGroup m_providerGroup;
+            
+            std::vector<std::unique_ptr<IThreadWorker>> m_workers;
         };
+        
+        namespace details
+        {
+            bool NotifyWorkers(const std::vector<std::unique_ptr<IThreadWorker>>& workers, const bool single);
+        }
     }
 }
 

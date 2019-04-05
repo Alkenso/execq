@@ -31,12 +31,12 @@
 
 namespace execq
 {
-    namespace details
+    namespace impl
     {
-        class IThreadWorkerTaskProvider
+        class ITaskExecutor
         {
         public:
-            virtual ~IThreadWorkerTaskProvider() = default;
+            virtual ~ITaskExecutor() = default;
             
             virtual bool execute() = 0;
         };
@@ -54,7 +54,7 @@ namespace execq
         class ThreadWorker: public IThreadWorker
         {
         public:
-            explicit ThreadWorker(IThreadWorkerTaskProvider& provider);
+            explicit ThreadWorker(ITaskExecutor& provider);
             virtual ~ThreadWorker();
             
             virtual bool notifyWorker() final;
@@ -68,9 +68,9 @@ namespace execq
             std::atomic_flag m_isWorking = ATOMIC_FLAG_INIT;
             std::condition_variable m_condition;
             std::mutex m_mutex;
-            std::thread m_thread;
+            std::unique_ptr<std::thread> m_thread;
             
-            IThreadWorkerTaskProvider& m_provider;
+            ITaskExecutor& m_provider;
         };
     }
 }
