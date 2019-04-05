@@ -22,78 +22,10 @@
  * SOFTWARE.
  */
 
-#include <gmock/gmock.h>
-
 #include "ExecutionPool.h"
-//#include "ExecutionStream.h"
+#include "ExecqTestUtil.h"
 
-namespace
-{
-    const std::chrono::milliseconds kLongTermJob { 100 };
-    const std::chrono::milliseconds kTimeout { 500 };
-    
-    void WaitForLongTermJob()
-    {
-        std::this_thread::sleep_for(kLongTermJob);
-    }
-    
-    MATCHER_P(CompareRvalue, value, "")
-    {
-        return value == arg;
-    }
-    
-    MATCHER_P(CompareWithAtomic, value, "")
-    {
-        return value == arg;
-    }
-    
-    MATCHER_P(SaveArgAddress, value, "")
-    {
-        *value = &arg;
-        return true;
-    }
-    
-    class MockThreadWorkerPool: public execq::impl::IThreadWorkerPool
-    {
-    public:
-        MOCK_CONST_METHOD1(createNewWorker, std::unique_ptr<execq::impl::IThreadWorker>(execq::impl::ITaskExecutor& provider));
-        
-        MOCK_METHOD1(addProvider, void(execq::impl::ITaskProvider& provider));
-        MOCK_METHOD1(removeProvider, void(execq::impl::ITaskProvider& provider));
-        
-        MOCK_METHOD0(notifyOneWorker, bool());
-        MOCK_METHOD0(notifyAllWorkers, void());
-    };
-    
-    class MockThreadWorker: public execq::impl::IThreadWorker
-    {
-    public:
-        MOCK_METHOD0(notifyWorker, bool());
-    };
-}
-
-#include <dispatch/dispatch.h>
-//TEST(ExecutionPool, ExecutionQueue_SingleTask1)
-//{
-//    execq::ExecutionPool pool;
-//
-//    auto queue = pool.createConcurrentExecutionQueue<std::string, void>([] (const std::atomic_bool&, std::string&& s) {
-//        std::string ss;
-//        for (volatile int i = 0; i < 100; i++)
-//        {
-//            ss += s;
-//        }
-//
-//        return ss;
-//    });
-//
-//    auto* qq = queue.get();
-//
-//    dispatch_apply(1000000, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(size_t a) {
-//        qq->push("ludfkldjsfj dsjfkldsajf lkdjsafldsklfhdjksfhs hfjkdsa fgadsgfjkadsfhjdshjgs");
-//    });
-//
-//}
+using namespace execq::test;
 
 TEST(ExecutionPool, ExecutionQueue_SingleTask)
 {
@@ -205,20 +137,21 @@ TEST(ExecutionPool, ExecutionQueue_WorkerPool_Concurrent)
     
     
     // Test that executors method is called in the proper moment
-    ASSERT_TRUE(registeredProvider->hasTask());
+    execq::impl::Task task = registeredProvider->nextTask();
+    ASSERT_TRUE(task.valid());
     EXPECT_CALL(mockExecutor, Call(CompareWithAtomic(false), CompareRvalue("qwe")))
     .WillOnce(::testing::Return());
-    ASSERT_TRUE(registeredProvider->execute());
+    task();
 
-    ASSERT_TRUE(registeredProvider->hasTask());
+    task = registeredProvider->nextTask();
+    ASSERT_TRUE(task.valid());
     EXPECT_CALL(mockExecutor, Call(CompareWithAtomic(false), CompareRvalue("asd")))
     .WillOnce(::testing::Return());
-    ASSERT_TRUE(registeredProvider->execute());
+    task();
     
     
     // No tasks - no execution
-    EXPECT_FALSE(registeredProvider->execute());
-    EXPECT_FALSE(registeredProvider->hasTask());
+    EXPECT_FALSE(registeredProvider->nextTask().valid());
     
     
     //  Queue must 'unregister' itself in WorkerThreadPool when destroyed
@@ -263,25 +196,26 @@ TEST(ExecutionPool, ExecutionQueue_WorkerPool_Serial)
     
     
     // Test that executors method is called in the proper moment
-    ASSERT_TRUE(registeredProvider->hasTask());
+    execq::impl::Task task = registeredProvider->nextTask();
+    ASSERT_TRUE(task.valid());
     EXPECT_CALL(mockExecutor, Call(CompareWithAtomic(false), CompareRvalue("qwe")))
     .WillOnce(::testing::Return());
     
     // For serial queue, if the operation completes and there is any task to execute, it will notify workers to handle it
     EXPECT_CALL(*workerPool, notifyOneWorker())
     .WillOnce(::testing::Return(true));
-    ASSERT_TRUE(registeredProvider->execute());
+    task();
     
     
-    ASSERT_TRUE(registeredProvider->hasTask());
+    task = registeredProvider->nextTask();
+    ASSERT_TRUE(task.valid());
     EXPECT_CALL(mockExecutor, Call(CompareWithAtomic(false), CompareRvalue("asd")))
     .WillOnce(::testing::Return());
-    ASSERT_TRUE(registeredProvider->execute());
+    task();
     
     
     // No tasks - no execution
-    EXPECT_FALSE(registeredProvider->execute());
-    EXPECT_FALSE(registeredProvider->hasTask());
+    EXPECT_FALSE(registeredProvider->nextTask().valid());
     
     
     //  Queue must 'unregister' itself in WorkerThreadPool when destroyed
@@ -328,8 +262,14 @@ TEST(ExecutionPool, ExecutionQueue_Cancelability)
     EXPECT_CALL(mockExecutor, Call(CompareWithAtomic(false), CompareRvalue("asd")))
     .WillOnce(::testing::Return());
     
-    ASSERT_TRUE(registeredProvider->execute());
-    ASSERT_TRUE(registeredProvider->execute());
+    
+    execq::impl::Task task = registeredProvider->nextTask();
+    ASSERT_TRUE(task.valid());
+    task();
+    
+    task = registeredProvider->nextTask();
+    ASSERT_TRUE(task.valid());
+    task();
     
     
     //  Queue must 'unregister' itself in WorkerThreadPool when destroyed

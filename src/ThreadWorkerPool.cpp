@@ -36,7 +36,7 @@ execq::impl::ThreadWorkerPool::ThreadWorkerPool()
     }
 }
 
-std::unique_ptr<execq::impl::IThreadWorker> execq::impl::ThreadWorkerPool::createNewWorker(ITaskExecutor& provider) const
+std::unique_ptr<execq::impl::IThreadWorker> execq::impl::ThreadWorkerPool::createNewWorker(ITaskProvider& provider) const
 {
     return std::unique_ptr<ThreadWorker>(new ThreadWorker(provider));
 }

@@ -25,7 +25,7 @@
 #pragma once
 
 #include "execq/internal/ThreadWorker.h"
-#include "execq/internal/TaskProviderGroup.h"
+#include "execq/internal/TaskProviderList.h"
 
 #include <atomic>
 #include <memory>
@@ -40,7 +40,7 @@ namespace execq
         public:
             virtual ~IThreadWorkerPool() = default;
             
-            virtual std::unique_ptr<IThreadWorker> createNewWorker(ITaskExecutor& provider) const = 0;
+            virtual std::unique_ptr<IThreadWorker> createNewWorker(ITaskProvider& provider) const = 0;
             
             virtual void addProvider(ITaskProvider& provider) = 0;
             virtual void removeProvider(ITaskProvider& provider) = 0;
@@ -55,7 +55,7 @@ namespace execq
         public:
             ThreadWorkerPool();
             
-            virtual std::unique_ptr<IThreadWorker> createNewWorker(ITaskExecutor& provider) const final;
+            virtual std::unique_ptr<IThreadWorker> createNewWorker(ITaskProvider& provider) const final;
             
             virtual void addProvider(ITaskProvider& provider) final;
             virtual void removeProvider(ITaskProvider& provider) final;
@@ -65,7 +65,7 @@ namespace execq
             
         private:
             std::atomic_bool m_valid { true };
-            TaskProviderGroup m_providerGroup;
+            TaskProviderList m_providerGroup;
             
             std::vector<std::unique_ptr<IThreadWorker>> m_workers;
         };

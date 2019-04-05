@@ -22,38 +22,9 @@
  * SOFTWARE.
  */
 
-#include "TaskProviderGroup.h"
+#include "TaskProviderList.h"
 
-bool execq::impl::TaskProviderGroup::execute()
-{
-    ITaskProvider *const provider = nextProviderWithTask();
-    if (provider)
-    {
-        return provider->execute();
-    }
-    
-    return false;
-}
-
-void execq::impl::TaskProviderGroup::addProvider(ITaskProvider& provider)
-{
-    std::lock_guard<std::mutex> lock(m_mutex);
-    m_taskProviders.push_back(&provider);
-    m_currentTaskProviderIt = m_taskProviders.begin();
-}
-
-void execq::impl::TaskProviderGroup::removeProvider(ITaskProvider& provider)
-{
-    std::lock_guard<std::mutex> lock(m_mutex);
-    const auto it = std::find(m_taskProviders.begin(), m_taskProviders.end(), &provider);
-    if (it != m_taskProviders.end())
-    {
-        m_taskProviders.erase(it);
-        m_currentTaskProviderIt = m_taskProviders.begin();
-    }
-}
-
-execq::impl::ITaskProvider* execq::impl::TaskProviderGroup::nextProviderWithTask()
+execq::impl::Task execq::impl::TaskProviderList::nextTask()
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     
@@ -67,12 +38,31 @@ execq::impl::ITaskProvider* execq::impl::TaskProviderGroup::nextProviderWithTask
             m_currentTaskProviderIt = m_taskProviders.begin();
         }
         
-        ITaskProvider* provider = *(m_currentTaskProviderIt++);
-        if (provider->hasTask())
+        ITaskProvider* const provider = *(m_currentTaskProviderIt++);
+        Task task = provider->nextTask();
+        if (task.valid())
         {
-            return provider;
+            return task;
         }
     }
     
-    return nullptr;
+    return Task();
+}
+
+void execq::impl::TaskProviderList::addProvider(ITaskProvider& provider)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_taskProviders.push_back(&provider);
+    m_currentTaskProviderIt = m_taskProviders.begin();
+}
+
+void execq::impl::TaskProviderList::removeProvider(ITaskProvider& provider)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    const auto it = std::find(m_taskProviders.begin(), m_taskProviders.end(), &provider);
+    if (it != m_taskProviders.end())
+    {
+        m_taskProviders.erase(it);
+        m_currentTaskProviderIt = m_taskProviders.begin();
+    }
 }

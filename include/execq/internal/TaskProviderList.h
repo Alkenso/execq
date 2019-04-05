@@ -24,27 +24,31 @@
 
 #pragma once
 
-#include <functional>
+#include "execq/internal/ThreadWorker.h"
+
+#include <mutex>
+#include <list>
 
 namespace execq
 {
     namespace impl
     {
-        class ScopeGuard
+        class TaskProviderList: public ITaskProvider
         {
-        public:
-            template <typename ScopeExitHandler>
-            explicit ScopeGuard(ScopeExitHandler&& handler);
+        public: // ITaskProvider
+            virtual Task nextTask() final;
             
-            ~ScopeGuard();
+        public:
+            void addProvider(ITaskProvider& provider);
+            void removeProvider(ITaskProvider& provider);
             
         private:
-            std::function<void(void) noexcept> m_handler;
+            using TaskProviders_lt = std::list<ITaskProvider*>;
+            TaskProviders_lt m_taskProviders;
+            TaskProviders_lt::iterator m_currentTaskProviderIt;
+            std::mutex m_mutex;
         };
     }
 }
 
-template <typename ScopeExitHandler>
-execq::impl::ScopeGuard::ScopeGuard(ScopeExitHandler&& handler)
-: m_handler(std::forward<ScopeExitHandler>(handler))
-{}
+

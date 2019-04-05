@@ -24,7 +24,7 @@
 
 #pragma once
 
-#include "execq/internal/ExecutionStream.h"
+#include "execq/IExecutionStream.h"
 #include "execq/internal/ExecutionQueue.h"
 #include "execq/internal/ThreadWorkerPool.h"
 

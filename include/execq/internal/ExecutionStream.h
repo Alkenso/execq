@@ -39,34 +39,30 @@ namespace execq
         class ExecutionStream: public IExecutionStream, private ITaskProvider
         {
         public:
-            ExecutionStream(std::shared_ptr<ThreadWorkerPool> workerPool, std::function<void(const std::atomic_bool& isCanceled)> executee);
+            ExecutionStream(std::shared_ptr<IThreadWorkerPool> workerPool, std::function<void(const std::atomic_bool& isCanceled)> executee);
             ~ExecutionStream();
             
         public: // IExecutionStream
             virtual void start() final;
             virtual void stop() final;
             
-        private: // IThreadWorkerPoolTaskProvider
-            virtual bool execute() final;
-            virtual bool hasTask() const final;
+        private: // ITaskProvider
+            virtual Task nextTask() final;
             
         private:
             void waitPendingTasks();
             
         private:
-            std::atomic_bool m_started { false };
+            std::atomic_bool m_stopped { true };
             
-            size_t m_tasksRunningCount { 0 };
+            std::atomic_size_t m_tasksRunningCount { 0 };
             std::mutex m_taskCompleteMutex;
             std::condition_variable m_taskCompleteCondition;
             
-            std::mutex m_taskStartMutex;
-            std::condition_variable m_taskStartCondition;
+            const std::shared_ptr<IThreadWorkerPool> m_workerPool;
+            const std::function<void(const std::atomic_bool& shouldQuit)> m_executee;
             
-            std::shared_ptr<ThreadWorkerPool> m_workerPool;
-            std::function<void(const std::atomic_bool& shouldQuit)> m_executee;
-            
-            ThreadWorker m_additionalWorker;
+            const std::unique_ptr<IThreadWorker> m_additionalWorker;
         };
     }
 }

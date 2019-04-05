@@ -24,6 +24,13 @@
 
 #include "ExecutionPool.h"
 
+#include "ExecutionStream.h"
+
 execq::ExecutionPool::ExecutionPool()
 : m_workerPool(std::make_shared<impl::ThreadWorkerPool>())
 {}
+
+std::unique_ptr<execq::IExecutionStream> execq::ExecutionPool::createExecutionStream(std::function<void(const std::atomic_bool& isCanceled)> executee)
+{
+    return std::unique_ptr<impl::ExecutionStream>(new impl::ExecutionStream(m_workerPool, std::move(executee)));
+}

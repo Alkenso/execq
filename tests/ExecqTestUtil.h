@@ -24,57 +24,54 @@
 
 #pragma once
 
-#include <mutex>
-#include <atomic>
-#include <thread>
-#include <future>
-#include <condition_variable>
+#include "ThreadWorkerPool.h"
+
+#include <gmock/gmock.h>
 
 namespace execq
 {
-    namespace impl
+    namespace test
     {
-        using Task = std::packaged_task<void()>;
-        class ITaskProvider
+        class MockThreadWorkerPool: public execq::impl::IThreadWorkerPool
         {
         public:
-            virtual ~ITaskProvider() = default;
+            MOCK_CONST_METHOD1(createNewWorker, std::unique_ptr<execq::impl::IThreadWorker>(execq::impl::ITaskProvider& provider));
             
-            virtual Task nextTask() = 0;
+            MOCK_METHOD1(addProvider, void(execq::impl::ITaskProvider& provider));
+            MOCK_METHOD1(removeProvider, void(execq::impl::ITaskProvider& provider));
+            
+            MOCK_METHOD0(notifyOneWorker, bool());
+            MOCK_METHOD0(notifyAllWorkers, void());
         };
         
-        
-        class IThreadWorker
+        class MockThreadWorker: public execq::impl::IThreadWorker
         {
         public:
-            virtual ~IThreadWorker() = default;
-            
-            virtual bool notifyWorker() = 0;
+            MOCK_METHOD0(notifyWorker, bool());
         };
         
+        static const std::chrono::milliseconds kLongTermJob { 100 };
+        static const std::chrono::milliseconds kTimeout { 500 };
         
-        class ThreadWorker: public IThreadWorker
+        static void WaitForLongTermJob()
         {
-        public:
-            explicit ThreadWorker(ITaskProvider& provider);
-            virtual ~ThreadWorker();
-            
-            virtual bool notifyWorker() final;
-            
-        private:
-            void threadMain();
-            void shutdown();
-            
-        private:
-            std::atomic_bool m_shouldQuit { false };
-            std::atomic_flag m_isWorking = ATOMIC_FLAG_INIT;
-            std::condition_variable m_condition;
-            std::mutex m_mutex;
-            std::unique_ptr<std::thread> m_thread;
-            
-            ITaskProvider& m_provider;
-        };
+            std::this_thread::sleep_for(kLongTermJob);
+        }
+        
+        MATCHER_P(CompareRvalue, value, "")
+        {
+            return value == arg;
+        }
+        
+        MATCHER_P(CompareWithAtomic, value, "")
+        {
+            return value == arg;
+        }
+        
+        MATCHER_P(SaveArgAddress, value, "")
+        {
+            *value = &arg;
+            return true;
+        }
     }
 }
-
-

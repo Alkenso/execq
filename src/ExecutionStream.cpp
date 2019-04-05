@@ -24,11 +24,11 @@
 
 #include "ExecutionStream.h"
 
-execq::impl::ExecutionStream::ExecutionStream(std::shared_ptr<ThreadWorkerPool> workerPool,
-                                                 std::function<void(const std::atomic_bool& isCanceled)> executee)
+execq::impl::ExecutionStream::ExecutionStream(std::shared_ptr<IThreadWorkerPool> workerPool,
+                                              std::function<void(const std::atomic_bool& isCanceled)> executee)
 : m_workerPool(workerPool)
 , m_executee(std::move(executee))
-, m_additionalWorker(*this)
+, m_additionalWorker(workerPool->createNewWorker(*this))
 {
     m_workerPool->addProvider(*this);
 }
@@ -36,7 +36,6 @@ execq::impl::ExecutionStream::ExecutionStream(std::shared_ptr<ThreadWorkerPool> 
 execq::impl::ExecutionStream::~ExecutionStream()
 {
     stop();
-    m_taskStartCondition.notify_all();
     waitPendingTasks();
     m_workerPool->removeProvider(*this);
 }
@@ -45,40 +44,35 @@ execq::impl::ExecutionStream::~ExecutionStream()
 
 void execq::impl::ExecutionStream::start()
 {
-    m_started = true;
+    m_stopped = false;
     m_workerPool->notifyAllWorkers();
-    m_additionalWorker.notifyWorker();
+    m_additionalWorker->notifyWorker();
 }
 
 void execq::impl::ExecutionStream::stop()
 {
-    m_started = false;
+    m_stopped = true;
 }
 
 // IThreadWorkerPoolTaskProvider
 
-bool execq::impl::ExecutionStream::execute()
+execq::impl::Task execq::impl::ExecutionStream::nextTask()
 {
-    if (!m_started)
+    if (m_stopped)
     {
-        return false;
+        return Task();
     }
     
     m_tasksRunningCount++;
-    m_executee(m_started);
-    m_tasksRunningCount--;
-    
-    if (m_tasksRunningCount)
-    {
-        m_taskCompleteCondition.notify_one();
-    }
-    
-    return true;
-}
-
-bool execq::impl::ExecutionStream::hasTask() const
-{
-    return m_started;
+    return Task([&] {
+        m_executee(m_stopped);
+        m_tasksRunningCount--;
+        
+        if (!m_tasksRunningCount)
+        {
+            m_taskCompleteCondition.notify_all();
+        }
+    });
 }
 
 // Private

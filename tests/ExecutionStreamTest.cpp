@@ -22,25 +22,11 @@
  * SOFTWARE.
  */
 
-#include <gmock/gmock.h>
-
 #include "ExecutionPool.h"
 #include "ExecutionStream.h"
+#include "ExecqTestUtil.h"
 
-namespace
-{
-    const std::chrono::milliseconds kLongTermJob { 100 };
-    
-    void WaitForLongTermJob()
-    {
-        std::this_thread::sleep_for(kLongTermJob);
-    }
-    
-    MATCHER_P(CompareWithAtomic, value, "")
-    {
-        return value == arg;
-    }
-}
+using namespace execq::test;
 
 TEST(ExecutionPool, ExecutionStream_UsualRun)
 {
@@ -53,8 +39,8 @@ TEST(ExecutionPool, ExecutionStream_UsualRun)
     auto executedTaskCount = std::make_shared<std::atomic_size_t>(0);
     auto canceledTaskCount = std::make_shared<std::atomic_size_t>(0);
     EXPECT_CALL(mockExecutor, Call(::testing::_))
-    .WillRepeatedly(::testing::Invoke([executedTaskCount, canceledTaskCount] (const std::atomic_bool& shouldQuit) {
-        if (shouldQuit)
+    .WillRepeatedly(::testing::Invoke([executedTaskCount, canceledTaskCount] (const std::atomic_bool& isCanceled) {
+        if (isCanceled)
         {
             (*canceledTaskCount)++;
         }
@@ -75,46 +61,53 @@ TEST(ExecutionPool, ExecutionStream_UsualRun)
     EXPECT_EQ(canceledTaskCount->load(), 0);
 }
 
-TEST(ExecutionPool, ExecutionStream_Delegate)
+TEST(ExecutionPool, ExecutionStream_WorkerPool)
 {
-    class MockExecutionStreamDelegate: public execq::details::IExecutionStreamDelegate
-    {
-    public:
-        MOCK_METHOD1(registerStreamTaskProvider, void(execq::details::ITaskProvider& taskProvider));
-        MOCK_METHOD1(unregisterStreamTaskProvider, void(const execq::details::ITaskProvider& taskProvider));
-        MOCK_METHOD0(streamDidStart, void());
-    };
+    auto workerPool = std::make_shared<execq::test::MockThreadWorkerPool>();
     
-    MockExecutionStreamDelegate delegate;
-    
-    
-    //  Queue must call 'register' method when created and 'unregister' method when destroyed.
-    EXPECT_CALL(delegate, registerStreamTaskProvider(::testing::_))
+    //  Stream must 'register' itself in WorkerThreadPool when created
+    execq::impl::ITaskProvider* registeredProvider = nullptr;
+    EXPECT_CALL(*workerPool, addProvider(SaveArgAddress(&registeredProvider)))
     .WillOnce(::testing::Return());
     
-    EXPECT_CALL(delegate, unregisterStreamTaskProvider(::testing::_))
-    .WillOnce(::testing::Return());
     
-    // Stream is created in 'stopped' state.
+    // Strean also creates additional single thread worker for its own needs
+    std::unique_ptr<MockThreadWorker> additionalWorkerPtr(new MockThreadWorker{});
+    MockThreadWorker& additionalWorker = *additionalWorkerPtr;
+    EXPECT_CALL(*workerPool, createNewWorker(::testing::_))
+    .WillOnce(::testing::Return(::testing::ByMove(std::move(additionalWorkerPtr))));
+    
+    
+    // Create stream with mock execution function
     ::testing::MockFunction<void(const std::atomic_bool&)> mockExecutor;
-    execq::details::ExecutionStream stream(delegate, mockExecutor.AsStdFunction());
+    execq::impl::ExecutionStream stream(workerPool, mockExecutor.AsStdFunction());
+    ASSERT_NE(registeredProvider, nullptr);
     
-    EXPECT_CALL(mockExecutor, Call(::testing::_))
-    .WillRepeatedly(::testing::Invoke([] (const std::atomic_bool&) {
-        WaitForLongTermJob();
-    }));
     
-    EXPECT_CALL(delegate, streamDidStart())
+    // When steram starts, it notifies all workers
+    EXPECT_CALL(*workerPool, notifyAllWorkers())
     .WillOnce(::testing::Return());
+    EXPECT_CALL(additionalWorker, notifyWorker())
+    .WillOnce(::testing::Return(true));
     
     stream.start();
     
     
-    // check if 'streamDidStart' is called after 'stop'
+    // While stream is started, it always produce valid tasks
+    execq::impl::Task task = registeredProvider->nextTask();
+    EXPECT_TRUE(task.valid());
+    EXPECT_CALL(mockExecutor, Call(::testing::_))
+    .WillOnce(::testing::Return());
+    task();
+    
+    
     stream.stop();
     
-    EXPECT_CALL(delegate, streamDidStart())
-    .WillOnce(::testing::Return());
+    // When stopped, tasks are invalid
+    EXPECT_FALSE(registeredProvider->nextTask().valid());
     
-    stream.start();
+    
+    //  Stream must 'unregister' itself in WorkerThreadPool when destroyed
+    EXPECT_CALL(*workerPool, removeProvider(::testing::_))
+    .WillOnce(::testing::Return());
 }

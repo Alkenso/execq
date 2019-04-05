@@ -24,7 +24,7 @@
 
 #include "ThreadWorker.h"
 
-execq::impl::ThreadWorker::ThreadWorker(ITaskExecutor& provider)
+execq::impl::ThreadWorker::ThreadWorker(ITaskProvider& provider)
 : m_provider(provider)
 {}
 
@@ -73,8 +73,10 @@ void execq::impl::ThreadWorker::threadMain()
             break;
         }
         
-        if (m_provider.execute())
+        Task task = m_provider.nextTask();
+        if (task.valid())
         {
+            task();
             continue;
         }
         
