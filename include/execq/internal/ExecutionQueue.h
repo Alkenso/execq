@@ -163,13 +163,13 @@ execq::impl::Task execq::impl::ExecutionQueue<T, R>::nextTask()
             return;
         }
         
-        if (m_isSerial && m_hasTask)
-        {
-            notifyWorkers();
-        }
-        else
+        if (!m_hasTask)
         {
             m_taskQueueCondition.notify_all();
+        }
+        else if (m_isSerial) // if there are more tasks and queue is serial, notify workers
+        {
+            notifyWorkers();
         }
     });
 }

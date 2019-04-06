@@ -65,13 +65,15 @@ void execq::impl::ThreadWorkerPool::notifyAllWorkers()
 
 bool execq::impl::details::NotifyWorkers(const std::vector<std::unique_ptr<IThreadWorker>>& workers, const bool single)
 {
+    bool notified = false;
     for (const auto& worker : workers)
     {
-        if (worker->notifyWorker() && single)
+        notified |= worker->notifyWorker();
+        if (notified && single)
         {
             return true;
         }
     }
     
-    return false;
+    return notified;
 }
