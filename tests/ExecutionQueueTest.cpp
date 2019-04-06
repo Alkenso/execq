@@ -27,6 +27,29 @@
 
 using namespace execq::test;
 
+#include <dispatch/dispatch.h>
+TEST(ExecutionPool, ExecutionQueue_SingleTask1)
+{
+    execq::ExecutionPool pool;
+
+    auto queue = pool.createConcurrentExecutionQueue<std::string, void>([] (const std::atomic_bool&, std::string&& s) {
+        std::string ss;
+        for (volatile int i = 0; i < 100; i++)
+        {
+            ss += s;
+        }
+
+        return ss;
+    });
+
+    auto* qq = queue.get();
+
+    dispatch_apply(10000000, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(size_t a) {
+        qq->push("ludfkldjsfj dsjfkldsajf lkdjsafldsklfhdjksfhs hfjkdsa fgadsgfjkadsfhjdshjgs");
+    });
+
+}
+
 TEST(ExecutionPool, ExecutionQueue_SingleTask)
 {
     execq::ExecutionPool pool;

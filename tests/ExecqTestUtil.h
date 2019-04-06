@@ -53,7 +53,7 @@ namespace execq
         static const std::chrono::milliseconds kLongTermJob { 100 };
         static const std::chrono::milliseconds kTimeout { 500 };
         
-        static void WaitForLongTermJob()
+        inline void WaitForLongTermJob()
         {
             std::this_thread::sleep_for(kLongTermJob);
         }

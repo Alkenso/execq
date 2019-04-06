@@ -23,8 +23,8 @@
  */
 
 #include "TaskProviderList.h"
-
-#include <gmock/gmock.h>
+#include "ThreadWorkerPool.h"
+#include "ExecqTestUtil.h"
 
 using namespace ::testing;
 
@@ -135,4 +135,82 @@ TEST(ExecutionPool, TaskProviderList_Add_Remove)
     EXPECT_TRUE(providers.nextTask().valid());
     EXPECT_TRUE(providers.nextTask().valid());
     EXPECT_FALSE(providers.nextTask().valid());
+}
+
+TEST(ExecutionPool, ThreadWorkerPool_NotifyWorkers_Single)
+{
+    using namespace execq::impl;
+    using namespace ::testing;
+    
+    std::vector<std::unique_ptr<IThreadWorker>> workers;
+    
+    std::unique_ptr<execq::test::MockThreadWorker> worker1Ptr(new execq::test::MockThreadWorker{});
+    execq::test::MockThreadWorker& worker1 = *worker1Ptr;
+    workers.push_back(std::move(worker1Ptr));
+    
+    std::unique_ptr<execq::test::MockThreadWorker> worker2Ptr(new execq::test::MockThreadWorker{});
+    execq::test::MockThreadWorker& worker2 = *worker2Ptr;
+    workers.push_back(std::move(worker2Ptr));
+    
+    
+    // If the first worker is notified, the second wouldn't
+    EXPECT_CALL(worker1, notifyWorker())
+    .WillOnce(Return(true));
+    EXPECT_CALL(worker2, notifyWorker())
+    .Times(0);
+    
+    const bool notifySingle = true;
+    EXPECT_TRUE(details::NotifyWorkers(workers, notifySingle));
+    
+    
+    // If the first worker responds negatively for notification, the second should be notified. An so on
+    EXPECT_CALL(worker1, notifyWorker())
+    .WillOnce(Return(false));
+    EXPECT_CALL(worker2, notifyWorker())
+    .WillOnce(Return(true));
+    
+    EXPECT_TRUE(details::NotifyWorkers(workers, notifySingle));
+    
+    
+    // If both workers respond negatively, just general result will be 'false'
+    EXPECT_CALL(worker1, notifyWorker())
+    .WillOnce(Return(false));
+    EXPECT_CALL(worker2, notifyWorker())
+    .WillOnce(Return(false));
+    
+    EXPECT_FALSE(details::NotifyWorkers(workers, notifySingle));
+}
+
+TEST(ExecutionPool, ThreadWorkerPool_NotifyWorkers_All)
+{
+    using namespace execq::impl;
+    using namespace ::testing;
+    
+    std::vector<std::unique_ptr<IThreadWorker>> workers;
+    
+    std::unique_ptr<execq::test::MockThreadWorker> worker1Ptr(new execq::test::MockThreadWorker{});
+    execq::test::MockThreadWorker& worker1 = *worker1Ptr;
+    workers.push_back(std::move(worker1Ptr));
+    
+    std::unique_ptr<execq::test::MockThreadWorker> worker2Ptr(new execq::test::MockThreadWorker{});
+    execq::test::MockThreadWorker& worker2 = *worker2Ptr;
+    workers.push_back(std::move(worker2Ptr));
+    
+    
+    // All workers are notified regardless of their responce
+    EXPECT_CALL(worker1, notifyWorker())
+    .WillOnce(Return(true));
+    EXPECT_CALL(worker2, notifyWorker())
+    .WillOnce(Return(false));
+    
+    const bool notifySingle = false;
+    EXPECT_TRUE(details::NotifyWorkers(workers, notifySingle));
+    
+    
+    EXPECT_CALL(worker1, notifyWorker())
+    .WillOnce(Return(false));
+    EXPECT_CALL(worker2, notifyWorker())
+    .WillOnce(Return(false));
+    
+    EXPECT_FALSE(details::NotifyWorkers(workers, notifySingle));
 }
