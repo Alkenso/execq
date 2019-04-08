@@ -17,21 +17,21 @@ OPTION(EXECQ_ENABLE_TESTING "Build execq's unit-tests." OFF)
 set(LIB_SOURCES
     include/execq/IExecutionStream.h
     include/execq/IExecutionQueue.h
-    include/execq/ExecutionPool.h
     include/execq/execq.h
 
-    include/execq/internal/ExecutionStream.h
+    include/execq/internal/execq_private.h
+    include/execq/internal/ExecutionPool.h
     include/execq/internal/ExecutionQueue.h
+    include/execq/internal/ExecutionStream.h
     include/execq/internal/ThreadWorker.h
-    include/execq/internal/ThreadWorkerPool.h
     include/execq/internal/TaskProviderList.h
     include/execq/internal/CancelTokenProvider.h
 
-    src/ThreadWorker.cpp
-    src/ThreadWorkerPool.cpp
-    src/TaskProviderList.cpp
-    src/ExecutionStream.cpp
+    src/execq.cpp
     src/ExecutionPool.cpp
+    src/ExecutionStream.cpp
+    src/ThreadWorker.cpp
+    src/TaskProviderList.cpp
     src/CancelTokenProvider.cpp
 )
 

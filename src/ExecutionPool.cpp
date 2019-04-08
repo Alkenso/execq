@@ -24,13 +24,47 @@
 
 #include "ExecutionPool.h"
 
-#include "ExecutionStream.h"
-
-execq::ExecutionPool::ExecutionPool()
-: m_workerPool(std::make_shared<impl::ThreadWorkerPool>())
-{}
-
-std::unique_ptr<execq::IExecutionStream> execq::ExecutionPool::createExecutionStream(std::function<void(const std::atomic_bool& isCanceled)> executee)
+execq::impl::ExecutionPool::ExecutionPool(const uint32_t threadCount, const IThreadWorkerFactory& workerFactory)
 {
-    return std::unique_ptr<impl::ExecutionStream>(new impl::ExecutionStream(m_workerPool, std::move(executee)));
+    for (uint32_t i = 0; i < threadCount; i++)
+    {
+        m_workers.emplace_back(workerFactory.createWorker(m_providerGroup));
+    }
+}
+
+void execq::impl::ExecutionPool::addProvider(ITaskProvider& provider)
+{
+    m_providerGroup.addProvider(provider);
+}
+
+void execq::impl::ExecutionPool::removeProvider(ITaskProvider& provider)
+{
+    m_providerGroup.removeProvider(provider);
+}
+
+bool execq::impl::ExecutionPool::notifyOneWorker()
+{
+    return details::NotifyWorkers(m_workers, true);
+}
+
+void execq::impl::ExecutionPool::notifyAllWorkers()
+{
+    details::NotifyWorkers(m_workers, false);
+}
+
+// Details
+
+bool execq::impl::details::NotifyWorkers(const std::vector<std::unique_ptr<IThreadWorker>>& workers, const bool single)
+{
+    bool notified = false;
+    for (const auto& worker : workers)
+    {
+        notified |= worker->notifyWorker();
+        if (notified && single)
+        {
+            return true;
+        }
+    }
+    
+    return notified;
 }

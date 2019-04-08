@@ -26,7 +26,7 @@
 
 #include "execq/IExecutionQueue.h"
 #include "execq/internal/CancelTokenProvider.h"
-#include "execq/internal/ThreadWorkerPool.h"
+#include "execq/internal/ExecutionPool.h"
 
 #include <queue>
 
@@ -46,7 +46,8 @@ namespace execq
         class ExecutionQueue: public IExecutionQueue<R(T)>, private ITaskProvider
         {
         public:
-            ExecutionQueue(const bool serial, std::shared_ptr<IThreadWorkerPool> workerPool,
+            ExecutionQueue(const bool serial, std::shared_ptr<IExecutionPool> executionPool,
+                           const IThreadWorkerFactory& workerFactory,
                            std::function<R(const std::atomic_bool& isCanceled, T&& object)> executor);
             ~ExecutionQueue();
             
@@ -82,7 +83,7 @@ namespace execq
             CancelTokenProvider m_cancelTokenProvider;
             
             const bool m_isSerial = false;
-            const std::shared_ptr<IThreadWorkerPool> m_workerPool;
+            const std::shared_ptr<IExecutionPool> m_executionPool;
             const std::function<R(const std::atomic_bool& isCanceled, T&& object)> m_executor;
             
             const std::unique_ptr<IThreadWorker> m_additionalWorker;
@@ -91,14 +92,18 @@ namespace execq
 }
 
 template <typename T, typename R>
-execq::impl::ExecutionQueue<T, R>::ExecutionQueue(const bool serial, std::shared_ptr<IThreadWorkerPool> workerPool,
-                                                     std::function<R(const std::atomic_bool& shouldQuit, T&& object)> executor)
+execq::impl::ExecutionQueue<T, R>::ExecutionQueue(const bool serial, std::shared_ptr<IExecutionPool> executionPool,
+                                                  const IThreadWorkerFactory& workerFactory,
+                                                  std::function<R(const std::atomic_bool& shouldQuit, T&& object)> executor)
 : m_isSerial(serial)
-, m_workerPool(workerPool)
+, m_executionPool(executionPool)
 , m_executor(std::move(executor))
-, m_additionalWorker(workerPool->createNewWorker(*this))
+, m_additionalWorker(workerFactory.createWorker(*this))
 {
-    m_workerPool->addProvider(*this);
+    if (m_executionPool)
+    {
+        m_executionPool->addProvider(*this);
+    }
 }
 
 template <typename T, typename R>
@@ -106,7 +111,10 @@ execq::impl::ExecutionQueue<T, R>::~ExecutionQueue()
 {
     m_cancelTokenProvider.cancel();
     waitAllTasks();
-    m_workerPool->removeProvider(*this);
+    if (m_executionPool)
+    {
+        m_executionPool->removeProvider(*this);
+    }
 }
 
 // IExecutionQueue
@@ -236,7 +244,7 @@ bool execq::impl::ExecutionQueue<T, R>::hasTask()
 template <typename T, typename R>
 void execq::impl::ExecutionQueue<T, R>::notifyWorkers()
 {
-    if (!m_workerPool->notifyOneWorker())
+    if (!m_executionPool || !m_executionPool->notifyOneWorker())
     {
         m_additionalWorker->notifyWorker();
     }

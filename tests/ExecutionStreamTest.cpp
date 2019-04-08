@@ -22,6 +22,7 @@
  * SOFTWARE.
  */
 
+#include "execq.h"
 #include "ExecutionPool.h"
 #include "ExecutionStream.h"
 #include "ExecqTestUtil.h"
@@ -30,10 +31,10 @@ using namespace execq::test;
 
 TEST(ExecutionPool, ExecutionStream_UsualRun)
 {
-    execq::ExecutionPool pool;
+    auto pool = execq::CreateExecutionPool();
     
     ::testing::MockFunction<void(const std::atomic_bool&)> mockExecutor;
-    auto stream = pool.createExecutionStream(mockExecutor.AsStdFunction());
+    auto stream = execq::CreateExecutionStream(pool, mockExecutor.AsStdFunction());
     
     // counters must be shared_ptrs to be not destroyed at the end of test scope.
     auto executedTaskCount = std::make_shared<std::atomic_size_t>(0);
@@ -63,29 +64,30 @@ TEST(ExecutionPool, ExecutionStream_UsualRun)
 
 TEST(ExecutionPool, ExecutionStream_WorkerPool)
 {
-    auto workerPool = std::make_shared<execq::test::MockThreadWorkerPool>();
+    auto executionPool = std::make_shared<execq::test::MockExecutionPool>();
+    MockThreadWorkerFactory workerFactory {};
     
-    //  Stream must 'register' itself in WorkerThreadPool when created
+    //  Stream must 'register' itself in ExecutionPool when created
     execq::impl::ITaskProvider* registeredProvider = nullptr;
-    EXPECT_CALL(*workerPool, addProvider(SaveArgAddress(&registeredProvider)))
+    EXPECT_CALL(*executionPool, addProvider(SaveArgAddress(&registeredProvider)))
     .WillOnce(::testing::Return());
     
     
     // Strean also creates additional single thread worker for its own needs
     std::unique_ptr<MockThreadWorker> additionalWorkerPtr(new MockThreadWorker{});
     MockThreadWorker& additionalWorker = *additionalWorkerPtr;
-    EXPECT_CALL(*workerPool, createNewWorker(::testing::_))
+    EXPECT_CALL(workerFactory, createWorker(::testing::_))
     .WillOnce(::testing::Return(::testing::ByMove(std::move(additionalWorkerPtr))));
     
     
     // Create stream with mock execution function
     ::testing::MockFunction<void(const std::atomic_bool&)> mockExecutor;
-    execq::impl::ExecutionStream stream(workerPool, mockExecutor.AsStdFunction());
+    execq::impl::ExecutionStream stream(executionPool, workerFactory, mockExecutor.AsStdFunction());
     ASSERT_NE(registeredProvider, nullptr);
     
     
     // When steram starts, it notifies all workers
-    EXPECT_CALL(*workerPool, notifyAllWorkers())
+    EXPECT_CALL(*executionPool, notifyAllWorkers())
     .WillOnce(::testing::Return());
     EXPECT_CALL(additionalWorker, notifyWorker())
     .WillOnce(::testing::Return(true));
@@ -107,7 +109,7 @@ TEST(ExecutionPool, ExecutionStream_WorkerPool)
     EXPECT_FALSE(registeredProvider->nextTask().valid());
     
     
-    //  Stream must 'unregister' itself in WorkerThreadPool when destroyed
-    EXPECT_CALL(*workerPool, removeProvider(::testing::_))
+    //  Stream must 'unregister' itself in ExecutionPool when destroyed
+    EXPECT_CALL(*executionPool, removeProvider(::testing::_))
     .WillOnce(::testing::Return());
 }

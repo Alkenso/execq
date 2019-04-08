@@ -25,7 +25,7 @@
 #pragma once
 
 #include "execq/IExecutionStream.h"
-#include "execq/internal/ThreadWorkerPool.h"
+#include "execq/internal/ExecutionPool.h"
 
 #include <mutex>
 #include <thread>
@@ -39,7 +39,9 @@ namespace execq
         class ExecutionStream: public IExecutionStream, private ITaskProvider
         {
         public:
-            ExecutionStream(std::shared_ptr<IThreadWorkerPool> workerPool, std::function<void(const std::atomic_bool& isCanceled)> executee);
+            ExecutionStream(std::shared_ptr<IExecutionPool> executionPool,
+                            const IThreadWorkerFactory& workerFactory,
+                            std::function<void(const std::atomic_bool& isCanceled)> executee);
             ~ExecutionStream();
             
         public: // IExecutionStream
@@ -59,7 +61,7 @@ namespace execq
             std::mutex m_taskCompleteMutex;
             std::condition_variable m_taskCompleteCondition;
             
-            const std::shared_ptr<IThreadWorkerPool> m_workerPool;
+            const std::shared_ptr<IExecutionPool> m_executionPool;
             const std::function<void(const std::atomic_bool& shouldQuit)> m_executee;
             
             const std::unique_ptr<IThreadWorker> m_additionalWorker;

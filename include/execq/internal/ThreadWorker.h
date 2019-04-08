@@ -53,26 +53,14 @@ namespace execq
         };
         
         
-        class ThreadWorker: public IThreadWorker
+        class IThreadWorkerFactory
         {
         public:
-            explicit ThreadWorker(ITaskProvider& provider);
-            virtual ~ThreadWorker();
+            static std::shared_ptr<const IThreadWorkerFactory> defaultFactory();
             
-            virtual bool notifyWorker() final;
+            virtual ~IThreadWorkerFactory() = default;
             
-        private:
-            void threadMain();
-            void shutdown();
-            
-        private:
-            std::atomic_bool m_shouldQuit { false };
-            std::atomic_flag m_isWorking = ATOMIC_FLAG_INIT;
-            std::condition_variable m_condition;
-            std::mutex m_mutex;
-            std::unique_ptr<std::thread> m_thread;
-            
-            ITaskProvider& m_provider;
+            virtual std::unique_ptr<impl::IThreadWorker> createWorker(impl::ITaskProvider& provider) const = 0;
         };
     }
 }

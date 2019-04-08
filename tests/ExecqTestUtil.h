@@ -24,7 +24,7 @@
 
 #pragma once
 
-#include "ThreadWorkerPool.h"
+#include "ExecutionPool.h"
 
 #include <gmock/gmock.h>
 
@@ -32,16 +32,20 @@ namespace execq
 {
     namespace test
     {
-        class MockThreadWorkerPool: public execq::impl::IThreadWorkerPool
+        class MockExecutionPool: public execq::IExecutionPool
         {
         public:
-            MOCK_CONST_METHOD1(createNewWorker, std::unique_ptr<execq::impl::IThreadWorker>(execq::impl::ITaskProvider& provider));
-            
             MOCK_METHOD1(addProvider, void(execq::impl::ITaskProvider& provider));
             MOCK_METHOD1(removeProvider, void(execq::impl::ITaskProvider& provider));
             
             MOCK_METHOD0(notifyOneWorker, bool());
             MOCK_METHOD0(notifyAllWorkers, void());
+        };
+        
+        class MockThreadWorkerFactory: public execq::impl::IThreadWorkerFactory
+        {
+        public:
+            MOCK_CONST_METHOD1(createWorker, std::unique_ptr<execq::impl::IThreadWorker>(execq::impl::ITaskProvider& provider));
         };
         
         class MockThreadWorker: public execq::impl::IThreadWorker

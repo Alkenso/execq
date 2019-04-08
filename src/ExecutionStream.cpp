@@ -24,20 +24,21 @@
 
 #include "ExecutionStream.h"
 
-execq::impl::ExecutionStream::ExecutionStream(std::shared_ptr<IThreadWorkerPool> workerPool,
+execq::impl::ExecutionStream::ExecutionStream(std::shared_ptr<IExecutionPool> executionPool,
+                                              const IThreadWorkerFactory& workerFactory,
                                               std::function<void(const std::atomic_bool& isCanceled)> executee)
-: m_workerPool(workerPool)
+: m_executionPool(executionPool)
 , m_executee(std::move(executee))
-, m_additionalWorker(workerPool->createNewWorker(*this))
+, m_additionalWorker(workerFactory.createWorker(*this))
 {
-    m_workerPool->addProvider(*this);
+    m_executionPool->addProvider(*this);
 }
 
 execq::impl::ExecutionStream::~ExecutionStream()
 {
     stop();
     waitPendingTasks();
-    m_workerPool->removeProvider(*this);
+    m_executionPool->removeProvider(*this);
 }
 
 // IExecutionStream
@@ -45,7 +46,7 @@ execq::impl::ExecutionStream::~ExecutionStream()
 void execq::impl::ExecutionStream::start()
 {
     m_stopped = false;
-    m_workerPool->notifyAllWorkers();
+    m_executionPool->notifyAllWorkers();
     m_additionalWorker->notifyWorker();
 }
 

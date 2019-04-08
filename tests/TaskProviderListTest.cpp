@@ -23,7 +23,6 @@
  */
 
 #include "TaskProviderList.h"
-#include "ThreadWorkerPool.h"
 #include "ExecqTestUtil.h"
 
 using namespace ::testing;

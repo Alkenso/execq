@@ -24,7 +24,6 @@
 
 #pragma once
 
-#include "execq/internal/ThreadWorker.h"
 #include "execq/internal/TaskProviderList.h"
 
 #include <atomic>
@@ -33,29 +32,24 @@
 
 namespace execq
 {
+    class IExecutionPool
+    {
+    public:
+        virtual ~IExecutionPool() = default;
+        
+        virtual void addProvider(impl::ITaskProvider& provider) = 0;
+        virtual void removeProvider(impl::ITaskProvider& provider) = 0;
+        
+        virtual bool notifyOneWorker() = 0;
+        virtual void notifyAllWorkers() = 0;
+    };
+    
     namespace impl
     {
-        class IThreadWorkerPool
+        class ExecutionPool: public IExecutionPool
         {
         public:
-            virtual ~IThreadWorkerPool() = default;
-            
-            virtual std::unique_ptr<IThreadWorker> createNewWorker(ITaskProvider& provider) const = 0;
-            
-            virtual void addProvider(ITaskProvider& provider) = 0;
-            virtual void removeProvider(ITaskProvider& provider) = 0;
-            
-            virtual bool notifyOneWorker() = 0;
-            virtual void notifyAllWorkers() = 0;
-        };
-        
-        
-        class ThreadWorkerPool: public IThreadWorkerPool
-        {
-        public:
-            ThreadWorkerPool();
-            
-            virtual std::unique_ptr<IThreadWorker> createNewWorker(ITaskProvider& provider) const final;
+            ExecutionPool(const uint32_t threadCount, const IThreadWorkerFactory& workerFactory);
             
             virtual void addProvider(ITaskProvider& provider) final;
             virtual void removeProvider(ITaskProvider& provider) final;
@@ -69,6 +63,7 @@ namespace execq
             
             std::vector<std::unique_ptr<IThreadWorker>> m_workers;
         };
+        
         
         namespace details
         {

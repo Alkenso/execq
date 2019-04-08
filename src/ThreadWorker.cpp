@@ -24,6 +24,49 @@
 
 #include "ThreadWorker.h"
 
+namespace execq
+{
+    namespace impl
+    {
+        class ThreadWorker: public IThreadWorker
+        {
+        public:
+            explicit ThreadWorker(ITaskProvider& provider);
+            virtual ~ThreadWorker();
+            
+            virtual bool notifyWorker() final;
+            
+        private:
+            void threadMain();
+            void shutdown();
+            
+        private:
+            std::atomic_bool m_shouldQuit { false };
+            std::atomic_flag m_isWorking = ATOMIC_FLAG_INIT;
+            std::condition_variable m_condition;
+            std::mutex m_mutex;
+            std::unique_ptr<std::thread> m_thread;
+            
+            ITaskProvider& m_provider;
+        };
+    }
+}
+
+std::shared_ptr<const execq::impl::IThreadWorkerFactory> execq::impl::IThreadWorkerFactory::defaultFactory()
+{
+    class ThreadWorkerFactory: public IThreadWorkerFactory
+    {
+    public:
+        virtual std::unique_ptr<IThreadWorker> createWorker(ITaskProvider& provider) const final
+        {
+            return std::unique_ptr<IThreadWorker>(new ThreadWorker(provider));
+        }
+    };
+    
+    static std::shared_ptr<IThreadWorkerFactory> s_factory = std::make_shared<ThreadWorkerFactory>();
+    return s_factory;
+}
+
 execq::impl::ThreadWorker::ThreadWorker(ITaskProvider& provider)
 : m_provider(provider)
 {}
