@@ -1,13 +1,13 @@
 ### execq
-**execq** is a kind of ThreadPool idea implementation with extended features.
+**execq** is kind of task-based approach of processing data using threadpool idea with extended features.
 It supports different task sources and maintains task execution in parallel on N threads (according to hardware concurrency).
 - providers are `queues` and `streams` that allow to execute tasks in different ways
-- `queues` provides ability to cancel tasks
+- `queues` provide ability to process the object just 'putting it to the queue'
 - supports serial and concurrent `queues`
-- work as you like: submitting an object to process on the `queue` returns optional std::future that can be used to get result as far as object is processes
-- generally single ExecutionPool instance is enough for whole application
+- work as you like: submitting an object to process on the `queue` returns nonblocking (unlike std::async) std::future that can be used to get result as far as the object is processed
 - maintains optimal thread count to avoid excess CPU thread context switches
-- runs tasks from diffirent i.e. providers 'by turn', avoiding starvation for providers that adds task very late
+- runs tasks from diffirent `queues`/`streams` 'by turn', avoiding starvation for task that have been added very late
+- designed to process multiple non-blocking task (generally you do not want to sleep/wait inside task-processing function)
 - C++11 compilant
 
 
@@ -21,14 +21,17 @@ Designed to process objects as 'push-and-forget'. Objects pushed into the queues
 
 ExecutionQueue combines usual queue, synchronization mechanisms and execution inside threadpool.
 
-Internally ExecutionQueue tracks tasks are being executed. If destroyed, the queue marks all running and pendings tasks as 'canceled'. Even is task was canceled before execution, it wouldn't be discarded and will be called on its turn but with 'isCanceled' == true.
+Internally ExecutionQueue tracks tasks are being executed. If destroyed, the queue marks all running and pendings tasks as 'canceled'. 
+Even if task was canceled before execution, it wouldn't be discarded and will be called on its turn but with 'isCanceled' == true.
 
 ExecutionQueue can be:
-- concurrent: process objects in parallel on multiple threads _// createConcurrentExecutionQueue_
-- serial: process objects strictly in 'one-after-one' order. You can be sure that no tasks are executed simultaneously _// createSerialExecutionQueue_
+- concurrent: process objects in parallel on multiple threads _// CreateConcurrentExecutionQueue_
+- serial: process objects strictly in 'one-after-one' order. You can be sure that no tasks are executed simultaneously _// CreateSerialExecutionQueue_
 
+execq allows to create 'IExecutionQueue' (both serial and concurrent) instance to process your objects in specific IExecutionPool.
 
-ExecutionPool allows to create 'ExecutionQueue' object to process your objects there.
+IExecutionPool is kind of opaque threadpool. The same IExecutionPool object usually is used with multiple `queues` and `streams`
+
 Now that is no need to write you own queue and synchronization around it - all is done inside!
 
     #include <execq/execq.h>
@@ -45,12 +48,44 @@ Now that is no need to write you own queue and synchronization around it - all i
         
         std::cout << "Processing object: " << object << '\n';
     }
-        
+
     int main(void)
     {
-        execq::ExecutionPool pool;
+        std::shared_ptr<execq::IExecutionPool> pool = execq::CreateExecutionPool();
         
-        std::unique_ptr<execq::IExecutionQueue<void(std::string)>> queue = pool.createConcurrentExecutionQueue<std::string, void>(&ProcessObject);
+        std::unique_ptr<execq::IExecutionQueue<void(std::string)>> queue = execq::CreateConcurrentExecutionQueue<std::string, void>(pool, &ProcessObject);
+        
+        queue->push("qwe");
+        queue->push("some string");
+        queue->push("");
+        
+        // when destroyed, queue waits until all tasks are executed
+        
+        return 0;
+    }
+
+##### Standalone serial queue
+Sometimes you may need just single-thread implementation of the queue to process things in the right order.
+For this purpose there is an ability to created pool-independent serial queue.
+
+    #include <execq/execq.h>
+    
+    // The function is called in parallel on the next free thread
+    // with the next object from the queue.
+    void ProcessObjectOneByOne(const std::atomic_bool& isCanceled, std::string&& object)
+    {
+        if (isCanceled)
+        {
+            std::cout << "Queue has been canceled. Skipping object...";
+            return;
+        }
+        
+        std::cout << "Processing object: " << object << '\n';
+    }
+
+    int main(void)
+    {
+        std::unique_ptr<execq::IExecutionQueue<void(std::string)>> queue = execq::CreateSerialExecutionQueue<std::string, void>(&ProcessObjectOneByOne);
         
         queue->push("qwe");
         queue->push("some string");
@@ -66,6 +101,8 @@ All ExecutionQueues when pushing object into it return std::future.
 Future object is bound to the pushed object and referers to result of object processing.
 Note: returned std::future objects could be simply discarded. They wouldn't block in std::future destructor.
 
+    #include <execq/execq.h>
+    
     // The function is called in parallel on the next free thread
     // with the next object from the queue.
     size_t GetStringSize(const std::atomic_bool& isCanceled, std::string&& object)
@@ -83,26 +120,28 @@ Note: returned std::future objects could be simply discarded. They wouldn't bloc
 
     int main(void)
     {
-        execq::ExecutionPool pool;
+        std::shared_ptr<execq::IExecutionPool> pool = execq::CreateExecutionPool();
         
-        std::unique_ptr<execq::IExecutionQueue<size_t(std::string)>> queue = pool.createConcurrentExecutionQueue<std::string, size_t>(&GetStringSize);
+        std::unique_ptr<execq::IExecutionQueue<size_t(std::string)>> queue = execq::CreateConcurrentExecutionQueue<std::string, size_t>(pool, &GetStringSize);
         
-        queue->push("qwe");
-        queue->push("some string");
-        std::future<size_t> future = queue->push("hello future");
+        std::future<size_t> future1 = queue->push("qwe");
+        std::future<size_t> future2 = queue->push("some string");
+        std::future<size_t> future3 = queue->push("hello future");
         
-        const size_t ss = future.get();
+        const size_t totalSize = future1.get() + future2.get() + future3.get();
 
         return 0;
     }
 
-execq supports std::future<void>, so ou can just wait until the object is processed.
+_execq supports std::future<void>, so ou can just wait until the object is processed._
 
 #### 2. Stream-based approach.
 Designed to process uncountable amount of tasks as fast as possible, i.e. process next task whenever new thread is available.
 
-execq allows to create 'ExecutionStream' object that will execute your code each time the thread in the pool is ready to execute next task.
+execq allows to create 'IExecutionStream' object that will execute your code each time the thread in the pool is ready to execute next task.
 That approach should be considered as the most effective way to process unlimited (or almost unlimited) tasks.
+
+    #include <execq/execq.h>
 
     // The function is called each time the thread is ready to execute next task.
     // It is called only if stream is started.
@@ -123,9 +162,9 @@ That approach should be considered as the most effective way to process unlimite
 
     int main(void)
     {
-        execq::ExecutionPool pool;
+        std::shared_ptr<execq::IExecutionPool> pool = execq::CreateExecutionPool();
         
-        std::unique_ptr<execq::IExecutionStream> stream = pool.createExecutionStream(&ProcessNextObject);
+        std::unique_ptr<execq::IExecutionStream> stream = execq::CreateExecutionStream(pool, &ProcessNextObject);
         
         stream->start();
         
@@ -157,4 +196,7 @@ This causes i.e. starvation: none of other queue tasks will be executed unless o
 To prevent this, each queue and stream additionally has it's own thread. This thread is some kind of 'insurance' thread, where the tasks from the queue/stream could be executed even if all pool's threads are busy for a long time.
 
 ### Work to be done
-No features left at the moment.
+- Replace using of std::packaged_task with reference counting
+
+### Tests
+By default, unit-tests are off. To enable them, just add CMake option -DEXECQ_ENABLE_TESTING=ON
