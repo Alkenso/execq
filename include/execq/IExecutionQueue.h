@@ -45,12 +45,26 @@ namespace execq
         virtual ~IExecutionQueue() = default;
         
         /**
-         * @brief Pushes an object to be processed on the queue.
+         * @brief Pushes-by-copy an object to be processed on the queue.
          * @discussion You can freely ignore return value: it would not block in future's destructor.
          * @return Future object to obtain result when the task is done.
          */
-        template <typename Y = T>
-        std::future<R> push(Y&& object);
+        std::future<R> push(const T& object);
+        
+        /**
+         * @brief Pushes-by-move an object to be processed on the queue.
+         * @discussion You can freely ignore return value: it would not block in future's destructor.
+         * @return Future object to obtain result when the task is done.
+         */
+        std::future<R> push(T&& object);
+        
+        /**
+         * @brief Emplaces an object to be processed on the queue.
+         * @discussion You can freely ignore return value: it would not block in future's destructor.
+         * @return Future object to obtain result when the task is done.
+         */
+        template <typename... Args>
+        std::future<R> emplace(Args&&... args);
         
         /**
          * @brief Makrs all tasks as canceled.
@@ -64,8 +78,20 @@ namespace execq
 }
 
 template <typename T, typename R>
-template <typename Y>
-std::future<R> execq::IExecutionQueue<R(T)>::push(Y&& object)
+std::future<R> execq::IExecutionQueue<R(T)>::push(const T& object)
 {
-    return pushImpl(std::unique_ptr<T>(new T { std::forward<Y>(object) }));
+    return pushImpl(std::unique_ptr<T>(new T { object }));
+}
+
+template <typename T, typename R>
+std::future<R> execq::IExecutionQueue<R(T)>::push(T&& object)
+{
+    return pushImpl(std::unique_ptr<T>(new T { std::move(object) }));
+}
+
+template <typename T, typename R>
+template <typename... Args>
+std::future<R> execq::IExecutionQueue<R(T)>::emplace(Args&&... args)
+{
+    return pushImpl(std::unique_ptr<T>(new T { std::forward<Args>(args)... }));
 }
