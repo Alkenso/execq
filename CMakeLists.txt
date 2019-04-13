@@ -49,7 +49,7 @@ include_directories(execq PRIVATE
 
 ### execq unit-tests ###
 
-if (EXECQ_ENABLE_TESTING)
+if (EXECQ_TESTING_ENABLE)
     set(TEST_SOURCES
         tests/ExecqTestUtil.h
         tests/CancelTokenProviderTest.cpp
