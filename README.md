@@ -199,4 +199,4 @@ To prevent this, each queue and stream additionally has it's own thread. This th
 - Replace using of std::packaged_task with reference counting
 
 ### Tests
-By default, unit-tests are off. To enable them, just add CMake option -DEXECQ_ENABLE_TESTING=ON
+By default, unit-tests are off. To enable them, just add CMake option -DEXECQ_TESTING_ENABLE=ON
