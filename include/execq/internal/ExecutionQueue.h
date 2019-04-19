@@ -165,8 +165,7 @@ execq::impl::Task execq::impl::ExecutionQueue<T, R>::nextTask()
             execute(std::move(*object->object), object->promise, *object->cancelToken);
         }
         
-        m_taskRunningCount--;
-        if (m_taskRunningCount > 0)
+        if (--m_taskRunningCount > 0)
         {
             return;
         }
