@@ -42,7 +42,7 @@ namespace execq
             
         private:
             std::atomic_bool m_shouldQuit { false };
-            std::atomic_flag m_isWorking = ATOMIC_FLAG_INIT;
+            std::atomic_bool m_checkNextTask { false };
             std::condition_variable m_condition;
             std::mutex m_mutex;
             std::unique_ptr<std::thread> m_thread;
@@ -82,14 +82,15 @@ execq::impl::ThreadWorker::~ThreadWorker()
 
 bool execq::impl::ThreadWorker::notifyWorker()
 {
-    if (m_isWorking.test_and_set())
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_checkNextTask)
     {
         return false;
     }
     
+    m_checkNextTask = true;
     if (!m_thread)
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
         m_thread.reset(new std::thread(&ThreadWorker::threadMain, this));
     }
     
@@ -109,17 +110,22 @@ void execq::impl::ThreadWorker::threadMain()
 {
     while (true)
     {
-        std::unique_lock<std::mutex> lock(m_mutex);
-        
         if (m_shouldQuit)
         {
             break;
         }
         
+        m_checkNextTask = false;
         Task task = m_provider.nextTask();
         if (task.valid())
         {
             task();
+            continue;
+        }
+        
+        std::unique_lock<std::mutex> lock(m_mutex);
+        if (m_checkNextTask)
+        {
             continue;
         }
         
@@ -128,8 +134,6 @@ void execq::impl::ThreadWorker::threadMain()
             break;
         }
         
-        m_isWorking.clear();
         m_condition.wait(lock);
-        m_isWorking.test_and_set();
     }
 }
