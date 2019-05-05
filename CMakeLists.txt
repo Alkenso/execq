@@ -3,7 +3,10 @@ cmake_minimum_required(VERSION 3.0.2)
 project(execq DESCRIPTION "Threadpool-like implementation that supports task execution in queue-like and stream-like ways.")
 
 if (NOT WIN32)
-	add_compile_options(-std=c++11 -stdlib=libc++)
+    add_compile_options(-std=c++11)
+    if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+        add_compile_options(-stdlib=libc++)
+    endif()
 endif()
 
 if (APPLE)
