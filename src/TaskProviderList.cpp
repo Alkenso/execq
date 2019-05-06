@@ -22,6 +22,7 @@
  * SOFTWARE.
  */
 
+#include <algorithm>
 #include "TaskProviderList.h"
 
 execq::impl::Task execq::impl::TaskProviderList::nextTask()
