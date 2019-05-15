@@ -26,6 +26,21 @@
 
 #include "execq/internal/ExecutionQueue.h"
 
+namespace execq
+{
+    namespace details
+    {
+        template <typename R>
+        void ExecuteQueueTask(const std::atomic_bool& isCanceled, QueueTask<R>&& task)
+        {
+            if (task.valid())
+            {
+                task(isCanceled);
+            }
+        }
+    }
+}
+
 template <typename T, typename R>
 std::unique_ptr<execq::IExecutionQueue<R(T)>> execq::CreateConcurrentExecutionQueue(std::shared_ptr<IExecutionPool> executionPool,
                                                                                     std::function<R(const std::atomic_bool& isCanceled, T&& object)> executor)
@@ -53,4 +68,22 @@ std::unique_ptr<execq::IExecutionQueue<R(T)>> execq::CreateSerialExecutionQueue(
                                                                                       nullptr,
                                                                                       *impl::IThreadWorkerFactory::defaultFactory(),
                                                                                       std::move(executor)));
+}
+
+template <typename R>
+std::unique_ptr<execq::IExecutionQueue<void(execq::QueueTask<R>)>> execq::CreateConcurrentTaskExecutionQueue(std::shared_ptr<IExecutionPool> executionPool)
+{
+    return CreateConcurrentExecutionQueue<QueueTask<R>, void>(executionPool, &details::ExecuteQueueTask<R>);
+}
+
+template <typename R>
+std::unique_ptr<execq::IExecutionQueue<void(execq::QueueTask<R>)>> execq::CreateSerialTaskExecutionQueue(std::shared_ptr<IExecutionPool> executionPool)
+{
+    return CreateSerialExecutionQueue<QueueTask<R>, void>(executionPool, &details::ExecuteQueueTask<R>);
+}
+
+template <typename R>
+std::unique_ptr<execq::IExecutionQueue<void(execq::QueueTask<R>)>> execq::CreateSerialTaskExecutionQueue()
+{
+    return CreateSerialExecutionQueue<QueueTask<R>, void>(&details::ExecuteQueueTask<R>);
 }

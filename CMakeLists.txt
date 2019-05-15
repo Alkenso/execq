@@ -10,7 +10,7 @@ if (APPLE)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "10.9")
 endif()
 
-OPTION(EXECQ_ENABLE_TESTING "Build execq's unit-tests." OFF)
+OPTION(EXECQ_TESTING_ENABLE "Build execq's unit-tests." OFF)
 
 ### execq library ###
 
@@ -55,6 +55,7 @@ if (EXECQ_TESTING_ENABLE)
         tests/CancelTokenProviderTest.cpp
         tests/ExecutionStreamTest.cpp
         tests/ExecutionQueueTest.cpp
+        tests/TaskExecutionQueueTest.cpp
         tests/TaskProviderListTest.cpp
     )
     add_executable(execq_tests ${TEST_SOURCES})

@@ -95,6 +95,40 @@ namespace execq
     std::unique_ptr<IExecutionStream> CreateExecutionStream(std::shared_ptr<IExecutionPool> executionPool,
                                                             std::function<void(const std::atomic_bool& isCanceled)> executee);
     
+    
+    
+    template <typename R>
+    using QueueTask = std::packaged_task<R(const std::atomic_bool& isCanceled)>;
+    
+    /**
+     * @brief Creates concurrent queue that processes custom tasks.
+     * @discussion All objects pushed into this queue will be processed on either one of pool threads or on the queue-specific thread.
+     * @discussion Tasks in the queue run concurrently on available threads.
+     * @discussion Queue is not designed to execute long-term tasks like waiting some event etc.
+     * For such purposes use separate thread or serial queue without execution pool.
+     */
+    template <typename R>
+    std::unique_ptr<IExecutionQueue<void(QueueTask<R>)>> CreateConcurrentTaskExecutionQueue(std::shared_ptr<IExecutionPool> executionPool);
+    
+    /**
+     * @brief Creates serial queue that processes custom tasks.
+     * @discussion All objects pushed into this queue will be processed on either one of pool threads or on the queue-specific thread.
+     * @discussion Tasks in the queue run in serial (one-after-one) order.
+     * @discussion Queue is not designed to execute long-term tasks like waiting some event etc.
+     * For such purposes use separate thread or serial queue without execution pool.
+     */
+    template <typename R>
+    std::unique_ptr<IExecutionQueue<void(QueueTask<R>)>> CreateSerialTaskExecutionQueue(std::shared_ptr<IExecutionPool> executionPool);
+    
+    /**
+     * @brief Creates serial queue that processes custom tasks.
+     * @discussion All objects pushed into this queue will be processed on the queue-specific thread.
+     * @discussion Tasks in the queue run in serial (one-after-one) order.
+     * @discussion This queue can be used to execute long-term tasks like waiting some event etc.
+     */
+    template <typename R>
+    std::unique_ptr<IExecutionQueue<void(QueueTask<R>)>> CreateSerialTaskExecutionQueue();
+    
 }
 
 #include "execq/internal/execq_private.h"
