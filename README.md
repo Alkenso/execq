@@ -53,7 +53,7 @@ Now that is no need to write you own queue and synchronization around it - all i
     {
         std::shared_ptr<execq::IExecutionPool> pool = execq::CreateExecutionPool();
         
-        std::unique_ptr<execq::IExecutionQueue<void(std::string)>> queue = execq::CreateConcurrentExecutionQueue<std::string, void>(pool, &ProcessObject);
+        std::unique_ptr<execq::IExecutionQueue<void(std::string)>> queue = execq::CreateConcurrentExecutionQueue<void, std::string>(pool, &ProcessObject);
         
         queue->push("qwe");
         queue->push("some string");
@@ -85,7 +85,7 @@ For this purpose there is an ability to created pool-independent serial queue.
 
     int main(void)
     {
-        std::unique_ptr<execq::IExecutionQueue<void(std::string)>> queue = execq::CreateSerialExecutionQueue<std::string, void>(&ProcessObjectOneByOne);
+        std::unique_ptr<execq::IExecutionQueue<void(std::string)>> queue = execq::CreateSerialExecutionQueue<void, std::string>(&ProcessObjectOneByOne);
         
         queue->push("qwe");
         queue->push("some string");
@@ -122,7 +122,7 @@ Note: returned std::future objects could be simply discarded. They wouldn't bloc
     {
         std::shared_ptr<execq::IExecutionPool> pool = execq::CreateExecutionPool();
         
-        std::unique_ptr<execq::IExecutionQueue<size_t(std::string)>> queue = execq::CreateConcurrentExecutionQueue<std::string, size_t>(pool, &GetStringSize);
+        std::unique_ptr<execq::IExecutionQueue<size_t(std::string)>> queue = execq::CreateConcurrentExecutionQueue<size_t, std::string>(pool, &GetStringSize);
         
         std::future<size_t> future1 = queue->push("qwe");
         std::future<size_t> future2 = queue->push("some string");
