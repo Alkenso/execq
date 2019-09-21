@@ -82,7 +82,7 @@ TEST(ExecutionPool, ExecutionQueue_TaskExecutionWhenQueueDestroyed)
 
     std::promise<std::pair<bool, std::string>> isExecutedPromise;
     auto isExecuted = isExecutedPromise.get_future();
-    auto queue = execq::CreateConcurrentExecutionQueue<std::string, void>(pool, [&isExecutedPromise] (const std::atomic_bool& shouldQuit,
+    auto queue = execq::CreateConcurrentExecutionQueue<void, std::string>(pool, [&isExecutedPromise] (const std::atomic_bool& shouldQuit,
                                                                                                       std::string&& object) {
         // wait for double time comparing to time waiting before reset
         WaitForLongTermJob();
@@ -120,7 +120,7 @@ TEST(ExecutionPool, ExecutionQueue_ExecutionPool_Concurrent)
     
     // Create queue with mock execution function
     ::testing::MockFunction<void(const std::atomic_bool&, std::string&&)> mockExecutor;
-    execq::impl::ExecutionQueue<std::string, void> queue(false, executionPool, workerFactory, mockExecutor.AsStdFunction());
+    execq::impl::ExecutionQueue<void, std::string> queue(false, executionPool, workerFactory, mockExecutor.AsStdFunction());
     ASSERT_NE(registeredProvider, nullptr);
     
     
@@ -180,7 +180,7 @@ TEST(ExecutionPool, ExecutionQueue_ExecutionPool_Serial)
     
     // Create queue with mock execution function
     ::testing::MockFunction<void(const std::atomic_bool&, std::string&&)> mockExecutor;
-    execq::impl::ExecutionQueue<std::string, void> queue(true, executionPool, workerFactory, mockExecutor.AsStdFunction());
+    execq::impl::ExecutionQueue<void, std::string> queue(true, executionPool, workerFactory, mockExecutor.AsStdFunction());
     ASSERT_NE(registeredProvider, nullptr);
     
     
@@ -250,7 +250,7 @@ TEST(ExecutionPool, ExecutionQueue_Cancelability)
     
     // Create queue with mock execution function
     ::testing::MockFunction<void(const std::atomic_bool&, std::string&&)> mockExecutor;
-    execq::impl::ExecutionQueue<std::string, void> queue(false, executionPool, workerFactory, mockExecutor.AsStdFunction());
+    execq::impl::ExecutionQueue<void, std::string> queue(false, executionPool, workerFactory, mockExecutor.AsStdFunction());
     ASSERT_NE(registeredProvider, nullptr);
     
     

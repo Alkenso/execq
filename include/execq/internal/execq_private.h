@@ -41,30 +41,30 @@ namespace execq
     }
 }
 
-template <typename T, typename R>
+template <typename R, typename T>
 std::unique_ptr<execq::IExecutionQueue<R(T)>> execq::CreateConcurrentExecutionQueue(std::shared_ptr<IExecutionPool> executionPool,
                                                                                     std::function<R(const std::atomic_bool& isCanceled, T&& object)> executor)
 {
-    return std::unique_ptr<impl::ExecutionQueue<T, R>>(new impl::ExecutionQueue<T, R>(false,
+    return std::unique_ptr<impl::ExecutionQueue<R, T>>(new impl::ExecutionQueue<R, T>(false,
                                                                                       executionPool,
                                                                                       *impl::IThreadWorkerFactory::defaultFactory(),
                                                                                       std::move(executor)));
 }
 
-template <typename T, typename R>
+template <typename R, typename T>
 std::unique_ptr<execq::IExecutionQueue<R(T)>> execq::CreateSerialExecutionQueue(std::shared_ptr<IExecutionPool> executionPool,
                                                                                 std::function<R(const std::atomic_bool& isCanceled, T&& object)> executor)
 {
-    return std::unique_ptr<impl::ExecutionQueue<T, R>>(new impl::ExecutionQueue<T, R>(false,
+    return std::unique_ptr<impl::ExecutionQueue<R, T>>(new impl::ExecutionQueue<R, T>(false,
                                                                                       executionPool,
                                                                                       *impl::IThreadWorkerFactory::defaultFactory(),
                                                                                       std::move(executor)));
 }
 
-template <typename T, typename R>
+template <typename R, typename T>
 std::unique_ptr<execq::IExecutionQueue<R(T)>> execq::CreateSerialExecutionQueue(std::function<R(const std::atomic_bool& isCanceled, T&& object)> executor)
 {
-    return std::unique_ptr<impl::ExecutionQueue<T, R>>(new impl::ExecutionQueue<T, R>(true,
+    return std::unique_ptr<impl::ExecutionQueue<R, T>>(new impl::ExecutionQueue<R, T>(true,
                                                                                       nullptr,
                                                                                       *impl::IThreadWorkerFactory::defaultFactory(),
                                                                                       std::move(executor)));
@@ -73,17 +73,17 @@ std::unique_ptr<execq::IExecutionQueue<R(T)>> execq::CreateSerialExecutionQueue(
 template <typename R>
 std::unique_ptr<execq::IExecutionQueue<void(execq::QueueTask<R>)>> execq::CreateConcurrentTaskExecutionQueue(std::shared_ptr<IExecutionPool> executionPool)
 {
-    return CreateConcurrentExecutionQueue<QueueTask<R>, void>(executionPool, &details::ExecuteQueueTask<R>);
+    return CreateConcurrentExecutionQueue<void, QueueTask<R>>(executionPool, &details::ExecuteQueueTask<R>);
 }
 
 template <typename R>
 std::unique_ptr<execq::IExecutionQueue<void(execq::QueueTask<R>)>> execq::CreateSerialTaskExecutionQueue(std::shared_ptr<IExecutionPool> executionPool)
 {
-    return CreateSerialExecutionQueue<QueueTask<R>, void>(executionPool, &details::ExecuteQueueTask<R>);
+    return CreateSerialExecutionQueue<void, QueueTask<R>>(executionPool, &details::ExecuteQueueTask<R>);
 }
 
 template <typename R>
 std::unique_ptr<execq::IExecutionQueue<void(execq::QueueTask<R>)>> execq::CreateSerialTaskExecutionQueue()
 {
-    return CreateSerialExecutionQueue<QueueTask<R>, void>(&details::ExecuteQueueTask<R>);
+    return CreateSerialExecutionQueue<void, QueueTask<R>>(&details::ExecuteQueueTask<R>);
 }

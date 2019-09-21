@@ -32,7 +32,7 @@ TEST(ExecutionPool, ExecutionQueue_TaskQueue_Concurrent)
     auto pool = execq::CreateExecutionPool();
     
     ::testing::MockFunction<void(const std::atomic_bool&)> mockExecutor;
-    auto queue = execq::CreateConcurrentTaskExecutionQueue<void>(pool);
+    auto queue = execq::CreateConcurrentTaskExecutionQueue(pool);
     
     EXPECT_CALL(mockExecutor, Call(::testing::_))
     .WillOnce(::testing::Return());
@@ -45,7 +45,7 @@ TEST(ExecutionPool, ExecutionQueue_TaskQueue_SerialWithPool)
     auto pool = execq::CreateExecutionPool();
     
     ::testing::MockFunction<void(const std::atomic_bool&)> mockExecutor;
-    auto queue = execq::CreateSerialTaskExecutionQueue<void>(pool);
+    auto queue = execq::CreateSerialTaskExecutionQueue(pool);
     
     EXPECT_CALL(mockExecutor, Call(::testing::_))
     .WillOnce(::testing::Return());
@@ -56,7 +56,7 @@ TEST(ExecutionPool, ExecutionQueue_TaskQueue_SerialWithPool)
 TEST(ExecutionPool, ExecutionQueue_TaskQueue_SerialStandalone)
 {
     ::testing::MockFunction<void(const std::atomic_bool&)> mockExecutor;
-    auto queue = execq::CreateSerialTaskExecutionQueue<void>();
+    auto queue = execq::CreateSerialTaskExecutionQueue();
     
     EXPECT_CALL(mockExecutor, Call(::testing::_))
     .WillOnce(::testing::Return());

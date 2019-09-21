@@ -61,7 +61,7 @@ namespace execq
      * @discussion Queue is not designed to execute long-term tasks like waiting some event etc.
      * For such purposes use separate thread or serial queue without execution pool.
      */
-    template <typename T, typename R>
+    template <typename R, typename T>
     std::unique_ptr<IExecutionQueue<R(T)>> CreateConcurrentExecutionQueue(std::shared_ptr<IExecutionPool> executionPool,
                                                                           std::function<R(const std::atomic_bool& isCanceled, T&& object)> executor);
     
@@ -72,7 +72,7 @@ namespace execq
      * @discussion Queue is not designed to execute long-term tasks like waiting some event etc.
      * For such purposes use separate thread or serial queue without execution pool.
      */
-    template <typename T, typename R>
+    template <typename R, typename T>
     std::unique_ptr<IExecutionQueue<R(T)>> CreateSerialExecutionQueue(std::shared_ptr<IExecutionPool> executionPool,
                                                                       std::function<R(const std::atomic_bool& isCanceled, T&& object)> executor);
     
@@ -82,7 +82,7 @@ namespace execq
      * @discussion Tasks in the queue run in serial (one-after-one) order.
      * @discussion This queue can be used to execute long-term tasks like waiting some event etc.
      */
-    template <typename T, typename R>
+    template <typename R, typename T>
     std::unique_ptr<IExecutionQueue<R(T)>> CreateSerialExecutionQueue(std::function<R(const std::atomic_bool& isCanceled, T&& object)> executor);
     
     
@@ -107,7 +107,7 @@ namespace execq
      * @discussion Queue is not designed to execute long-term tasks like waiting some event etc.
      * For such purposes use separate thread or serial queue without execution pool.
      */
-    template <typename R>
+    template <typename R = void>
     std::unique_ptr<IExecutionQueue<void(QueueTask<R>)>> CreateConcurrentTaskExecutionQueue(std::shared_ptr<IExecutionPool> executionPool);
     
     /**
@@ -117,7 +117,7 @@ namespace execq
      * @discussion Queue is not designed to execute long-term tasks like waiting some event etc.
      * For such purposes use separate thread or serial queue without execution pool.
      */
-    template <typename R>
+    template <typename R = void>
     std::unique_ptr<IExecutionQueue<void(QueueTask<R>)>> CreateSerialTaskExecutionQueue(std::shared_ptr<IExecutionPool> executionPool);
     
     /**
@@ -126,7 +126,7 @@ namespace execq
      * @discussion Tasks in the queue run in serial (one-after-one) order.
      * @discussion This queue can be used to execute long-term tasks like waiting some event etc.
      */
-    template <typename R>
+    template <typename R = void>
     std::unique_ptr<IExecutionQueue<void(QueueTask<R>)>> CreateSerialTaskExecutionQueue();
     
 }
