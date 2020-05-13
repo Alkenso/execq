@@ -34,104 +34,110 @@ IExecutionPool is kind of opaque threadpool. The same IExecutionPool object usua
 
 Now that is no need to write you own queue and synchronization around it - all is done inside!
 
-    #include <execq/execq.h>
-    
-    // The function is called in parallel on the next free thread
-    // with the next object from the queue.
-    void ProcessObject(const std::atomic_bool& isCanceled, std::string&& object)
-    {
-        if (isCanceled)
-        {
-            std::cout << "Queue has been canceled. Skipping object...";
-            return;
-        }
-        
-        std::cout << "Processing object: " << object << '\n';
-    }
+```cpp
+#include <execq/execq.h>
 
-    int main(void)
+// The function is called in parallel on the next free thread
+// with the next object from the queue.
+void ProcessObject(const std::atomic_bool& isCanceled, std::string&& object)
+{
+    if (isCanceled)
     {
-        std::shared_ptr<execq::IExecutionPool> pool = execq::CreateExecutionPool();
-        
-        std::unique_ptr<execq::IExecutionQueue<void(std::string)>> queue = execq::CreateConcurrentExecutionQueue<void, std::string>(pool, &ProcessObject);
-        
-        queue->push("qwe");
-        queue->push("some string");
-        queue->push("");
-        
-        // when destroyed, queue waits until all tasks are executed
-        
-        return 0;
+        std::cout << "Queue has been canceled. Skipping object...";
+        return;
     }
+    
+    std::cout << "Processing object: " << object << '\n';
+}
+
+int main(void)
+{
+    std::shared_ptr<execq::IExecutionPool> pool = execq::CreateExecutionPool();
+    
+    std::unique_ptr<execq::IExecutionQueue<void(std::string)>> queue = execq::CreateConcurrentExecutionQueue<void, std::string>(pool, &ProcessObject);
+    
+    queue->push("qwe");
+    queue->push("some string");
+    queue->push("");
+    
+    // when destroyed, queue waits until all tasks are executed
+    
+    return 0;
+}
+```
 
 ##### Standalone serial queue
 Sometimes you may need just single-thread implementation of the queue to process things in the right order.
 For this purpose there is an ability to created pool-independent serial queue.
 
-    #include <execq/execq.h>
-    
-    // The function is called in parallel on the next free thread
-    // with the next object from the queue.
-    void ProcessObjectOneByOne(const std::atomic_bool& isCanceled, std::string&& object)
-    {
-        if (isCanceled)
-        {
-            std::cout << "Queue has been canceled. Skipping object...";
-            return;
-        }
-        
-        std::cout << "Processing object: " << object << '\n';
-    }
+```cpp
+#include <execq/execq.h>
 
-    int main(void)
+// The function is called in parallel on the next free thread
+// with the next object from the queue.
+void ProcessObjectOneByOne(const std::atomic_bool& isCanceled, std::string&& object)
+{
+    if (isCanceled)
     {
-        std::unique_ptr<execq::IExecutionQueue<void(std::string)>> queue = execq::CreateSerialExecutionQueue<void, std::string>(&ProcessObjectOneByOne);
-        
-        queue->push("qwe");
-        queue->push("some string");
-        queue->push("");
-        
-        // when destroyed, queue waits until all tasks are executed
-        
-        return 0;
+        std::cout << "Queue has been canceled. Skipping object...";
+        return;
     }
+    
+    std::cout << "Processing object: " << object << '\n';
+}
+
+int main(void)
+{
+    std::unique_ptr<execq::IExecutionQueue<void(std::string)>> queue = execq::CreateSerialExecutionQueue<void, std::string>(&ProcessObjectOneByOne);
+    
+    queue->push("qwe");
+    queue->push("some string");
+    queue->push("");
+    
+    // when destroyed, queue waits until all tasks are executed
+    
+    return 0;
+}
+```
 
 #### 1.2 Queue-based approach: future inside!
 All ExecutionQueues when pushing object into it return std::future.
 Future object is bound to the pushed object and referers to result of object processing.
 Note: returned std::future objects could be simply discarded. They wouldn't block in std::future destructor.
 
-    #include <execq/execq.h>
-    
-    // The function is called in parallel on the next free thread
-    // with the next object from the queue.
-    size_t GetStringSize(const std::atomic_bool& isCanceled, std::string&& object)
-    {
-        if (isCanceled)
-        {
-            std::cout << "Queue has been canceled. Skipping object...";
-            return 0;
-        }
-        
-        std::cout << "Processing object: " << object << '\n';
-        
-        return object.size();
-    }
+```cpp
+#include <execq/execq.h>
 
-    int main(void)
+// The function is called in parallel on the next free thread
+// with the next object from the queue.
+size_t GetStringSize(const std::atomic_bool& isCanceled, std::string&& object)
+{
+    if (isCanceled)
     {
-        std::shared_ptr<execq::IExecutionPool> pool = execq::CreateExecutionPool();
-        
-        std::unique_ptr<execq::IExecutionQueue<size_t(std::string)>> queue = execq::CreateConcurrentExecutionQueue<size_t, std::string>(pool, &GetStringSize);
-        
-        std::future<size_t> future1 = queue->push("qwe");
-        std::future<size_t> future2 = queue->push("some string");
-        std::future<size_t> future3 = queue->push("hello future");
-        
-        const size_t totalSize = future1.get() + future2.get() + future3.get();
-
+        std::cout << "Queue has been canceled. Skipping object...";
         return 0;
     }
+    
+    std::cout << "Processing object: " << object << '\n';
+    
+    return object.size();
+}
+
+int main(void)
+{
+    std::shared_ptr<execq::IExecutionPool> pool = execq::CreateExecutionPool();
+    
+    std::unique_ptr<execq::IExecutionQueue<size_t(std::string)>> queue = execq::CreateConcurrentExecutionQueue<size_t, std::string>(pool, &GetStringSize);
+    
+    std::future<size_t> future1 = queue->push("qwe");
+    std::future<size_t> future2 = queue->push("some string");
+    std::future<size_t> future3 = queue->push("hello future");
+    
+    const size_t totalSize = future1.get() + future2.get() + future3.get();
+
+    return 0;
+}
+```
 
 _execq supports std::future<void>, so ou can just wait until the object is processed._
 
@@ -141,39 +147,41 @@ Designed to process uncountable amount of tasks as fast as possible, i.e. proces
 execq allows to create 'IExecutionStream' object that will execute your code each time the thread in the pool is ready to execute next task.
 That approach should be considered as the most effective way to process unlimited (or almost unlimited) tasks.
 
-    #include <execq/execq.h>
+```cpp
+#include <execq/execq.h>
 
-    // The function is called each time the thread is ready to execute next task.
-    // It is called only if stream is started.
-    void ProcessNextObject(const std::atomic_bool& isCanceled)
+// The function is called each time the thread is ready to execute next task.
+// It is called only if stream is started.
+void ProcessNextObject(const std::atomic_bool& isCanceled)
+{
+    if (isCanceled)
     {
-        if (isCanceled)
-        {
-            std::cout << "Stream has been canceled. Skipping...";
-            return;
-        }
-        
-        static std::atomic_int s_someObject { 0 };
-        
-        const int nextObject = s_someObject++;
-        
-        std::cout << "Processing object: " << nextObject << '\n';
+        std::cout << "Stream has been canceled. Skipping...";
+        return;
     }
+    
+    static std::atomic_int s_someObject { 0 };
+    
+    const int nextObject = s_someObject++;
+    
+    std::cout << "Processing object: " << nextObject << '\n';
+}
 
-    int main(void)
-    {
-        std::shared_ptr<execq::IExecutionPool> pool = execq::CreateExecutionPool();
-        
-        std::unique_ptr<execq::IExecutionStream> stream = execq::CreateExecutionStream(pool, &ProcessNextObject);
-        
-        stream->start();
-        
-        // Only for example purposes. Usually here (if in 'main') could be RunLoop/EventLoop.
-        // Wait until some objects are processed.
-        sleep(5);
-        
-        return 0;
-    }
+int main(void)
+{
+    std::shared_ptr<execq::IExecutionPool> pool = execq::CreateExecutionPool();
+    
+    std::unique_ptr<execq::IExecutionStream> stream = execq::CreateExecutionStream(pool, &ProcessNextObject);
+    
+    stream->start();
+    
+    // Only for example purposes. Usually here (if in 'main') could be RunLoop/EventLoop.
+    // Wait until some objects are processed.
+    sleep(5);
+    
+    return 0;
+}
+```
 
 ### Design principles & Tech. details
 Consider to use single ExecutionPool object (across whole application) with multiple queues and streams.
