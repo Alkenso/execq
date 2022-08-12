@@ -186,15 +186,39 @@ execq::impl::Task execq::impl::ExecutionQueue<R, T>::nextTask()
 template <typename R, typename T>
 void execq::impl::ExecutionQueue<R, T>::execute(T&& object, std::promise<void>& promise, const std::atomic_bool& canceled)
 {
-    m_executor(canceled, std::move(object));
-    promise.set_value();
+    try
+    {
+        m_executor(canceled, std::move(object));
+        promise.set_value();
+    }
+    catch(...)
+    {
+        try
+        {
+            promise.set_exception(std::current_exception());
+        }
+        catch(...)
+        {} // set_exception() may throw too
+    }
 }
 
 template <typename R, typename T>
 template <typename Y>
 void execq::impl::ExecutionQueue<R, T>::execute(T&& object, std::promise<Y>& promise, const std::atomic_bool& canceled)
 {
-    promise.set_value(m_executor(canceled, std::move(object)));
+    try
+    {
+        promise.set_value(m_executor(canceled, std::move(object)));
+    }
+    catch(...)
+    {
+        try
+        {
+            promise.set_exception(std::current_exception());
+        }
+        catch(...)
+        {} // set_exception() may throw too
+    }
 }
 
 template <typename R, typename T>
